@@ -75,6 +75,44 @@ a { color: inherit; }
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
 
+.mobile-step-nav { display: none; }
+
+@media (max-width: 1023px) {
+  body { font-size: 16px; }
+  button, a, select, input, textarea { -webkit-tap-highlight-color: transparent; }
+}
+
+@media (max-width: 639px) {
+  html { scroll-padding-top: 118px; }
+  body { overflow-x: hidden; }
+  .mobile-step-nav {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 10px 20px 11px;
+    border-top: 1px solid var(--border);
+    scrollbar-width: none;
+  }
+  .mobile-step-nav::-webkit-scrollbar { display: none; }
+  .mobile-step-nav a { flex: 0 0 auto; }
+  .mobile-step-nav a[aria-current="step"] { color: var(--ink); background: var(--surface-alt); }
+  .mobile-step-nav span { white-space: nowrap; }
+  .mobile-sticky-action {
+    display: flex;
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    margin: 20px -20px -24px;
+    padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
+    background: rgba(255, 255, 255, .94);
+    border-top: 1px solid var(--border);
+    backdrop-filter: blur(14px);
+  }
+  .mobile-sticky-action button { width: 100%; min-height: 52px; }
+  .mobile-card { border-radius: 12px !important; }
+  input, select, textarea { min-height: 48px; }
+}
+
 @media print {
   header, .steps-rail, .no-print, button, input, select, textarea { display: none !important; }
   body { font-size: 12pt; }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchApplianceType, normalizeNameplate, safetyGate, type DiagnosisResult } from "@shared/fixpoint";
+import { formatInrRange, matchApplianceType, normalizeNameplate, safetyGate, type DiagnosisResult } from "@shared/fixpoint";
 
 const baseResult: DiagnosisResult = {
   probable_causes: [{ cause: "Compressor issue", confidence: 72, explanation: "The unit is running but not cooling." }],
@@ -57,5 +57,11 @@ describe("Bernard nameplate OCR", () => {
     expect(matchApplianceType("MacBook Air")).toBe("Laptop");
     expect(matchApplianceType("Bluetooth earbuds")).toBe("Headphones");
     expect(matchApplianceType("unknown hardware")).toBeNull();
+  });
+});
+
+describe("Bernard local pricing", () => {
+  it("formats INR estimates for Indian users", () => {
+    expect(formatInrRange({ low: 1200, high: 4500, currency: "INR" })).toBe("₹1,200–₹4,500");
   });
 });

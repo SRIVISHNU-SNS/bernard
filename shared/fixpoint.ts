@@ -117,6 +117,13 @@ export function formatDuration(minutes: number) {
   return remaining ? `${hours} hr ${remaining} min` : `${hours} hr`;
 }
 
+export function formatInrRange(range: { low: number; high: number; currency: string }) {
+  const rate = range.currency.toUpperCase() === "INR" ? 1 : 83;
+  const low = Math.round(Math.max(0, range.low) * rate).toLocaleString("en-IN");
+  const high = Math.round(Math.max(0, range.high) * rate).toLocaleString("en-IN");
+  return `₹${low}–₹${high}`;
+}
+
 export function partSearchUrl(part: PartNeeded) {
   const query = encodeURIComponent(`${part.name} ${part.likely_part_number ?? ""}`.trim());
   return `https://www.google.com/search?q=${query}+device+part`;

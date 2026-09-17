@@ -25,21 +25,42 @@ function readContent(response: Awaited<ReturnType<typeof invokeLLM>>) {
   return Array.isArray(content) ? content.filter(part => part.type === "text").map(part => part.text).join("\n") : "";
 }
 
-async function requestDiagnosis(input: z.infer<typeof diagnosisInput>, signedImageUrl: string, signedNameplateUrl?: string) {
-  const imageParts = [
-    ...(input.fileMime.startsWith("video/")
+function parseStructuredJson<T>(raw: string): T {
+  const cleaned = raw.replace(/```(?:json)?/gi, "").replace(/```/g, "").trim();
+  if (!cleaned) throw new Error("The diagnosis model returned an empty response.");
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start < 0 || end <= start) throw new Error("The diagnosis model returned an incomplete response.");
+  try {
+    return JSON.parse(cleaned.slice(start, end + 1)) as T;
+  } catch {
+    throw new Error("The diagnosis model returned invalid JSON.");
+  }
+}
+
+type DiagnosisImagePart =
+  | { type: "file_url"; file_url: { url: string; mime_type: "video/mp4" } }
+  | { type: "image_url"; image_url: { url: string; detail: "high" } };
+
+async function requestDiagnosis(input: z.infer<typeof diagnosisInput>, signedImageUrl: string, signedNameplateUrl?: string, includeVideo = true) {
+  const imageParts: DiagnosisImagePart[] = input.fileMime.startsWith("video/")
+    ? includeVideo
       ? [{ type: "file_url" as const, file_url: { url: signedImageUrl, mime_type: "video/mp4" as const } }]
-      : [{ type: "image_url" as const, image_url: { url: signedImageUrl, detail: "high" as const } }]),
-    ...(input.frameKey ? [{ type: "image_url" as const, image_url: { url: input.frameKey, detail: "high" as const } }] : []),
-    ...(signedNameplateUrl ? [{ type: "image_url" as const, image_url: { url: signedNameplateUrl, detail: "high" as const } }] : []),
-  ];
+      : input.frameKey
+        ? [{ type: "image_url" as const, image_url: { url: input.frameKey, detail: "high" as const } }]
+        : []
+    : [{ type: "image_url" as const, image_url: { url: signedImageUrl, detail: "high" as const } }];
+  if (input.frameKey && !(input.fileMime.startsWith("video/") && !includeVideo)) {
+    imageParts.push({ type: "image_url" as const, image_url: { url: input.frameKey, detail: "high" as const } });
+  }
+  if (signedNameplateUrl) imageParts.push({ type: "image_url" as const, image_url: { url: signedNameplateUrl, detail: "high" as const } });
   const response = await invokeLLM({
     model: "claude-sonnet-4-6",
     thinking: { type: "enabled", budget_tokens: 2048 },
     messages: [
       {
         role: "system",
-              content: `You are Bernard, a careful device diagnostic assistant. Analyze the supplied evidence for any household appliance, personal electronic, entertainment device, or other consumer hardware and return only the requested JSON schema. Explain the likely problem in plain language for a non-technical person. Never invent a model-specific part number; use null when uncertain. Confidence is a calibrated estimate, not a promise. Any issue involving gas lines, refrigerant, sealed refrigeration systems, exposed mains voltage, swollen batteries, burning, smoke, or liquid near powered electronics MUST use safety_flag.level = red, explain the danger plainly, and return an empty repair_steps array. Do not provide DIY steps for those issues even if the user asks. For amber issues, include concise caution text on the affected steps.`,
+              content: `You are Bernard, a careful device diagnostic assistant. Analyze the supplied evidence for any household appliance, personal electronic, entertainment device, or other consumer hardware and return only the requested JSON schema. Explain the likely problem in plain language for a non-technical person. Estimate repair cost in Indian rupees and set estimated_cost_range.currency to INR. Never invent a model-specific part number; use null when uncertain. Confidence is a calibrated estimate, not a promise. Any issue involving gas lines, refrigerant, sealed refrigeration systems, exposed mains voltage, swollen batteries, burning, smoke, or liquid near powered electronics MUST use safety_flag.level = red, explain the danger plainly, and return an empty repair_steps array. Do not provide DIY steps for those issues even if the user asks. For amber issues, include concise caution text on the affected steps.`,
       },
       {
         role: "user",
@@ -55,7 +76,7 @@ async function requestDiagnosis(input: z.infer<typeof diagnosisInput>, signedIma
     response_format: { type: "json_schema", json_schema: diagnosisJsonSchema },
     maxTokens: 2400,
   });
-  const parsed = normalizeDiagnosis(JSON.parse(readContent(response)));
+  const parsed = normalizeDiagnosis(parseStructuredJson<unknown>(readContent(response)));
   if (!parsed) throw new Error("The diagnosis response did not match the required safety contract.");
   return safetyGate(parsed);
 }
@@ -94,8 +115,8 @@ export const appRouter = router({
       try {
         diagnosis = await requestDiagnosis(input, signedImageUrl, signedNameplateUrl);
       } catch (firstError) {
-        console.warn("[Fixpoint] Diagnosis retry after malformed or unavailable response", firstError);
-        diagnosis = await requestDiagnosis(input, signedImageUrl, signedNameplateUrl);
+        console.warn("[Bernard] Diagnosis retry after malformed or unavailable response", firstError);
+        diagnosis = await requestDiagnosis(input, signedImageUrl, signedNameplateUrl, false);
       }
       const id = await createDiagnosis({
         userId: ctx.user?.id,
@@ -131,7 +152,7 @@ export const appRouter = router({
         });
         const content = response.choices?.[0]?.message?.content;
         const raw = typeof content === "string" ? content : Array.isArray(content) ? content.filter(part => part.type === "text").map(part => part.text).join("\n") : "";
-        const details = normalizeNameplate(JSON.parse(raw));
+        const details = normalizeNameplate(parseStructuredJson<unknown>(raw));
         if (!details) throw new Error("The nameplate could not be read clearly.");
         return details;
       }),
