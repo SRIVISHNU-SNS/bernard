@@ -1,28 +1,119 @@
+import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
+import { diagnosisJsonSchema, normalizeDiagnosis, safetyGate, type DiagnosisResult } from "@shared/fixpoint";
 import { getSessionCookieOptions } from "./_core/cookies";
+import { invokeLLM } from "./_core/llm";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
+import { createDiagnosis, getLatestDiagnosis, updateDiagnosisProgress } from "./db";
+import { storageGetSignedUrl } from "./storage";
+
+const diagnosisInput = z.object({
+  sessionId: z.string().min(8).max(80),
+  applianceType: z.string().min(2).max(120),
+  modelNumber: z.string().max(160).optional(),
+  notes: z.string().max(1000).optional(),
+  fileKey: z.string().min(1).max(500),
+  fileMime: z.string().min(1).max(120),
+  frameKey: z.string().min(1).max(500).optional(),
+  nameplateKey: z.string().min(1).max(500).optional(),
+});
+
+function readContent(response: Awaited<ReturnType<typeof invokeLLM>>) {
+  const content = response.choices?.[0]?.message?.content;
+  if (typeof content === "string") return content;
+  return Array.isArray(content) ? content.filter(part => part.type === "text").map(part => part.text).join("\n") : "";
+}
+
+async function requestDiagnosis(input: z.infer<typeof diagnosisInput>, signedImageUrl: string, signedNameplateUrl?: string) {
+  const imageParts = [
+    ...(input.fileMime.startsWith("video/")
+      ? [{ type: "file_url" as const, file_url: { url: signedImageUrl, mime_type: "video/mp4" as const } }]
+      : [{ type: "image_url" as const, image_url: { url: signedImageUrl, detail: "high" as const } }]),
+    ...(input.frameKey ? [{ type: "image_url" as const, image_url: { url: input.frameKey, detail: "high" as const } }] : []),
+    ...(signedNameplateUrl ? [{ type: "image_url" as const, image_url: { url: signedNameplateUrl, detail: "high" as const } }] : []),
+  ];
+  const response = await invokeLLM({
+    model: "claude-sonnet-4-6",
+    thinking: { type: "enabled", budget_tokens: 2048 },
+    messages: [
+      {
+        role: "system",
+        content: `You are Fixpoint, a careful appliance diagnostic instrument. Analyze the supplied appliance evidence and return only the requested JSON schema. Never invent a model-specific part number; use null when uncertain. Confidence is a calibrated estimate, not a promise. Any issue involving gas lines, refrigerant, sealed refrigeration systems, or exposed high-voltage components MUST use safety_flag.level = red, must explain the danger plainly, and must return an empty repair_steps array. Do not provide DIY steps for those issues even if the user asks. For amber issues, include concise caution text on the affected steps.`,
+      },
+      {
+        role: "user",
+        content: [
+          ...imageParts,
+          {
+            type: "text",
+            text: `Appliance type: ${input.applianceType}\nModel number: ${input.modelNumber || "Not provided"}\nUser notes: ${input.notes || "None"}\n\nReturn a ranked, useful diagnosis for this exact evidence.`,
+          },
+        ],
+      },
+    ],
+    response_format: { type: "json_schema", json_schema: diagnosisJsonSchema },
+    maxTokens: 2400,
+  });
+  const parsed = normalizeDiagnosis(JSON.parse(readContent(response)));
+  if (!parsed) throw new Error("The diagnosis response did not match the required safety contract.");
+  return safetyGate(parsed);
+}
 
 export const appRouter = router({
-    // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
-      return {
-        success: true,
-      } as const;
+      return { success: true } as const;
     }),
   }),
-
-  // TODO: add feature routers here, e.g.
-  // todo: router({
-  //   list: protectedProcedure.query(({ ctx }) =>
-  //     db.getUserTodos(ctx.user.id)
-  //   ),
-  // }),
+  diagnosis: router({
+    latest: publicProcedure
+      .input(z.object({ sessionId: z.string().min(8).max(80) }))
+      .query(async ({ input }) => {
+        const row = await getLatestDiagnosis(input.sessionId);
+        if (!row) return null;
+        const diagnosis = normalizeDiagnosis(JSON.parse(row.diagnosisJson));
+        if (!diagnosis) return null;
+        let completedSteps: number[] = [];
+        try {
+          completedSteps = JSON.parse(row.repairProgress || "[]");
+        } catch {
+          completedSteps = [];
+        }
+        return { ...diagnosis, id: row.id, applianceType: row.applianceType, modelNumber: row.modelNumber, notes: row.notes, completedSteps };
+      }),
+    diagnose: publicProcedure.input(diagnosisInput).mutation(async ({ input, ctx }) => {
+      const signedImageUrl = await storageGetSignedUrl(input.fileKey);
+      const signedNameplateUrl = input.nameplateKey ? await storageGetSignedUrl(input.nameplateKey) : undefined;
+      if (input.frameKey) input.frameKey = await storageGetSignedUrl(input.frameKey);
+      let diagnosis: DiagnosisResult;
+      try {
+        diagnosis = await requestDiagnosis(input, signedImageUrl, signedNameplateUrl);
+      } catch (firstError) {
+        console.warn("[Fixpoint] Diagnosis retry after malformed or unavailable response", firstError);
+        diagnosis = await requestDiagnosis(input, signedImageUrl, signedNameplateUrl);
+      }
+      const id = await createDiagnosis({
+        userId: ctx.user?.id,
+        sessionId: input.sessionId,
+        applianceType: input.applianceType,
+        modelNumber: input.modelNumber,
+        notes: input.notes,
+        diagnosisJson: JSON.stringify(diagnosis),
+      });
+      return { ...diagnosis, id, applianceType: input.applianceType, modelNumber: input.modelNumber ?? null, notes: input.notes ?? null, completedSteps: [] };
+    }),
+    updateProgress: publicProcedure
+      .input(z.object({ diagnosisId: z.number().int().nonnegative(), sessionId: z.string().min(8).max(80), completedSteps: z.array(z.number().int().nonnegative()).max(50) }))
+      .mutation(async ({ input }) => {
+        if (input.diagnosisId > 0) await updateDiagnosisProgress({ id: input.diagnosisId, sessionId: input.sessionId, completedSteps: input.completedSteps });
+        return { success: true, completedSteps: input.completedSteps } as const;
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

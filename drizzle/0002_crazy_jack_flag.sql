@@ -1,0 +1,1 @@
+ALTER TABLE `diagnoses` MODIFY COLUMN `repairProgress` text NOT NULL;
