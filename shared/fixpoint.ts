@@ -70,10 +70,24 @@ export const applianceOptions = [
   "Other appliance",
 ] as const;
 
+export function matchApplianceType(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const normalized = value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  if (/(refrigerator|fridge|freezer|ice maker|wine cooler)/.test(normalized)) return "Refrigerator";
+  if (/(dishwasher|dish washer)/.test(normalized)) return "Dishwasher";
+  if (/(^| )(washer|washing machine|laundry washer)( |$)/.test(normalized)) return "Washing machine";
+  if (/(dryer|tumble dryer|clothes dryer)/.test(normalized)) return "Dryer";
+  if (/(oven|range|stove|cooktop|hob|cooker)/.test(normalized)) return "Oven / range";
+  if (/(microwave|convection oven)/.test(normalized)) return "Microwave";
+  if (/(water heater|boiler|hot water tank)/.test(normalized)) return "Water heater";
+  if (applianceOptions.some(option => option.toLowerCase() === normalized)) return value;
+  return null;
+}
+
 export function safetyLabel(level: SafetyLevel) {
-  if (level === "red") return "Stop — professional repair required";
-  if (level === "amber") return "Proceed with caution";
-  return "Suitable for a careful DIY fix";
+  if (level === "red") return "Don’t try this yourself";
+  if (level === "amber") return "Only continue if you feel confident";
+  return "Looks safe to try";
 }
 
 export function formatDuration(minutes: number) {

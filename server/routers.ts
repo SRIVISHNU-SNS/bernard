@@ -116,7 +116,7 @@ export const appRouter = router({
           messages: [
             {
               role: "system",
-              content: "Read this appliance nameplate carefully. Return only the requested JSON. Transcribe model and serial characters exactly when legible; use null when a value cannot be read. Do not infer a model number from a partial character sequence.",
+              content: "Read this appliance nameplate carefully. Return only the requested JSON. Look for common labels such as Model, Mod., Type, E-Nr, PNC, Service No., Serial, S/N, or Seriennummer, even when the plate is not in English. Transcribe model and serial characters exactly when legible; use null when a value cannot be read. Do not infer a model number from a partial character sequence. Normalize appliance type into a plain category such as refrigerator, freezer, washing machine, washer, dryer, dishwasher, oven, range, stove, cooktop, microwave, or water heater.",
             },
             {
               role: "user",

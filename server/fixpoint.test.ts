@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeNameplate, safetyGate, type DiagnosisResult } from "@shared/fixpoint";
+import { matchApplianceType, normalizeNameplate, safetyGate, type DiagnosisResult } from "@shared/fixpoint";
 
 const baseResult: DiagnosisResult = {
   probable_causes: [{ cause: "Compressor issue", confidence: 72, explanation: "The unit is running but not cooling." }],
@@ -46,5 +46,12 @@ describe("Bernard nameplate OCR", () => {
       serial_number: "1A2B3C4D",
       confidence: 100,
     });
+  });
+
+  it("matches common appliance synonyms to the product categories", () => {
+    expect(matchApplianceType("Front Load Washer")).toBe("Washing machine");
+    expect(matchApplianceType("Réfrigérateur / Freezer")).toBe("Refrigerator");
+    expect(matchApplianceType("Built-in gas range")).toBe("Oven / range");
+    expect(matchApplianceType("E-Nr dishwasher")).toBe("Dishwasher");
   });
 });
