@@ -53,5 +53,9 @@ describe("Bernard nameplate OCR", () => {
     expect(matchApplianceType("Réfrigérateur / Freezer")).toBe("Refrigerator");
     expect(matchApplianceType("Built-in gas range")).toBe("Oven / range");
     expect(matchApplianceType("E-Nr dishwasher")).toBe("Dishwasher");
+    expect(matchApplianceType("iPhone 15 Pro")).toBe("Phone");
+    expect(matchApplianceType("MacBook Air")).toBe("Laptop");
+    expect(matchApplianceType("Bluetooth earbuds")).toBe("Headphones");
+    expect(matchApplianceType("unknown hardware")).toBeNull();
   });
 });

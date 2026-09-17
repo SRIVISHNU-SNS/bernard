@@ -67,7 +67,17 @@ export const applianceOptions = [
   "Oven / range",
   "Microwave",
   "Water heater",
-  "Other appliance",
+  "Air conditioner",
+  "Coffee maker",
+  "Television",
+  "Laptop",
+  "Phone",
+  "Headphones",
+  "Tablet",
+  "Camera",
+  "Game console",
+  "Vacuum",
+  "Other device",
 ] as const;
 
 export function matchApplianceType(value: string | null | undefined): string | null {
@@ -80,6 +90,16 @@ export function matchApplianceType(value: string | null | undefined): string | n
   if (/(oven|range|stove|cooktop|hob|cooker)/.test(normalized)) return "Oven / range";
   if (/(microwave|convection oven)/.test(normalized)) return "Microwave";
   if (/(water heater|boiler|hot water tank)/.test(normalized)) return "Water heater";
+  if (/(air conditioner|aircon|ac unit|heat pump)/.test(normalized)) return "Air conditioner";
+  if (/(coffee maker|coffee machine|espresso machine|keurig)/.test(normalized)) return "Coffee maker";
+  if (/(television|tv|smart tv|monitor|display)/.test(normalized)) return "Television";
+  if (/(laptop|notebook|macbook|chromebook)/.test(normalized)) return "Laptop";
+  if (/(smartphone|mobile phone|cell phone|iphone|android phone|phone)/.test(normalized)) return "Phone";
+  if (/(headphone|headset|earbud|earphone|airpod)/.test(normalized)) return "Headphones";
+  if (/(tablet|ipad)/.test(normalized)) return "Tablet";
+  if (/(camera|dslr|mirrorless|camcorder)/.test(normalized)) return "Camera";
+  if (/(game console|playstation|xbox|nintendo|switch)/.test(normalized)) return "Game console";
+  if (/(vacuum|robot vacuum|hoover)/.test(normalized)) return "Vacuum";
   if (applianceOptions.some(option => option.toLowerCase() === normalized)) return value;
   return null;
 }
@@ -99,7 +119,7 @@ export function formatDuration(minutes: number) {
 
 export function partSearchUrl(part: PartNeeded) {
   const query = encodeURIComponent(`${part.name} ${part.likely_part_number ?? ""}`.trim());
-  return `https://www.google.com/search?q=${query}+appliance+part`;
+  return `https://www.google.com/search?q=${query}+device+part`;
 }
 
 export function normalizeNameplate(value: unknown): NameplateDetails | null {
@@ -185,7 +205,7 @@ export function safetyGate(result: DiagnosisResult): DiagnosisResult {
     ...result,
     safety_flag: {
       level: "red",
-      reason: "This diagnosis may involve gas, refrigerant, sealed refrigeration, or exposed high-voltage components. Do not open or repair it yourself; a qualified appliance professional should assess it.",
+    reason: "This diagnosis may involve gas, refrigerant, sealed refrigeration, or exposed high-voltage components. Do not open or repair it yourself; a qualified repair professional should assess it.",
     },
     difficulty: "professional_only",
     repair_steps: [],
