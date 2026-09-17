@@ -34,6 +34,17 @@ async function startServer() {
   const server = createServer(app);
   app.use(express.json({ limit: "110mb" }));
   app.use(express.urlencoded({ limit: "110mb", extended: true }));
+  app.use((error: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (error?.type === "entity.too.large") {
+      res.status(413).json({ error: "This upload is too large. Try a smaller photo or a shorter video." });
+      return;
+    }
+    if (error instanceof SyntaxError) {
+      res.status(400).json({ error: "The upload could not be read. Please try again." });
+      return;
+    }
+    next(error);
+  });
   registerStorageProxy(app);
   registerOAuthRoutes(app);
 
@@ -57,6 +68,28 @@ async function startServer() {
       res.json(stored);
     } catch (error) {
       console.error("[Fixpoint] Upload failed", error);
+      res.status(500).json({ error: "The file could not be processed. Try another photo or a shorter clip." });
+    }
+  });
+
+  app.post("/api/upload-binary", express.raw({ type: ["image/*", "video/*"], limit: "85mb" }), async (req, res) => {
+    try {
+      const mimeType = String(req.headers["content-type"] || "");
+      const fileName = String(req.query.fileName || req.headers["x-file-name"] || "evidence");
+      const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from([]);
+      const maxBytes = mimeType.startsWith("video/") ? 80 * 1024 * 1024 : 10 * 1024 * 1024;
+      if ((!mimeType.startsWith("image/") && !mimeType.startsWith("video/")) || buffer.length === 0) {
+        res.status(400).json({ error: "Upload must contain an image or video." });
+        return;
+      }
+      if (buffer.length > maxBytes) {
+        res.status(413).json({ error: `This file is larger than the ${mimeType.startsWith("video/") ? "80 MB" : "10 MB"} limit.` });
+        return;
+      }
+      const stored = await storagePut(`fixpoint/transient/${Date.now()}-${safeFileName(fileName)}`, buffer, mimeType);
+      res.json(stored);
+    } catch (error) {
+      console.error("[Bernard] Binary upload failed", error);
       res.status(500).json({ error: "The file could not be processed. Try another photo or a shorter clip." });
     }
   });

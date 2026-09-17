@@ -100,15 +100,49 @@ function extractVideoFrame(file: File) {
   });
 }
 
+async function prepareUploadFile(file: File) {
+  if (!file.type.startsWith("image/") || file.size < 1.8 * 1024 * 1024) return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 2000 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/jpeg", .82));
+    bitmap.close();
+    return blob ? new File([blob], `${file.name.replace(/\.[^.]+$/, "")}.jpg`, { type: "image/jpeg" }) : file;
+  } catch {
+    return file;
+  }
+}
+
 async function uploadFile(file: File, fileName = file.name): Promise<UploadRef> {
-  const response = await fetch("/api/upload", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ data: await fileToDataUrl(file), fileName, mimeType: file.type }),
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || "The file could not be uploaded.");
-  return payload as UploadRef;
+  const prepared = await prepareUploadFile(file);
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 120_000);
+      const response = await fetch(`/api/upload-binary?fileName=${encodeURIComponent(fileName)}`, {
+        method: "POST",
+        headers: { "Content-Type": prepared.type, "X-File-Name": encodeURIComponent(fileName) },
+        body: prepared,
+        signal: controller.signal,
+        cache: "no-store",
+      });
+      window.clearTimeout(timeout);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "The file could not be uploaded.");
+      return payload as UploadRef;
+    } catch (error) {
+      lastError = error;
+      if (attempt === 0) await new Promise(resolve => window.setTimeout(resolve, 500));
+    }
+  }
+  if (lastError instanceof DOMException && lastError.name === "AbortError") throw new Error("The upload took too long. Try a smaller photo or a shorter video.");
+  if (lastError instanceof TypeError) throw new Error("The connection was interrupted. Check your signal and try again.");
+  throw lastError instanceof Error ? lastError : new Error("The file could not be uploaded. Try again.");
 }
 
 function validateFile(file: File, allowVideo = true) {
@@ -229,7 +263,7 @@ function UploadPanel({ onAnalyze }: { onAnalyze: (payload: { file: File; evidenc
         role="button"
         tabIndex={0}
         aria-label="Upload device photo or video"
-        className={`mobile-card group relative flex min-h-[330px] cursor-pointer flex-col items-center justify-center border-2 border-dashed px-5 text-center transition-colors ${dragActive ? "border-[var(--signal)] bg-[#F5F8FF]" : "border-[#B8C0C9] bg-[var(--surface-alt)] hover:border-[var(--signal)] hover:bg-[#F8FAFF]"}`}
+        className={`surface-enter mobile-card group relative flex min-h-[330px] cursor-pointer flex-col items-center justify-center border-2 border-dashed px-5 text-center transition-colors ${dragActive ? "border-[var(--signal)] bg-[#F5F8FF]" : "border-[#B8C0C9] bg-[var(--surface-alt)] hover:border-[var(--signal)] hover:bg-[#F8FAFF]"}`}
         onClick={() => inputRef.current?.click()}
         onKeyDown={event => { if (event.key === "Enter" || event.key === " ") inputRef.current?.click(); }}
         onDragOver={event => { event.preventDefault(); setDragActive(true); }}
@@ -292,7 +326,7 @@ function UploadPanel({ onAnalyze }: { onAnalyze: (payload: { file: File; evidenc
       </div>
       {error && <div role="alert" className="mt-4 flex items-start gap-2 border-l-2 border-[var(--danger)] bg-[#FFF4F4] px-3 py-2 text-[14px] leading-5 text-[#8F2D2D]"><AlertTriangle size={17} className="mt-0.5 shrink-0" />{error}</div>}
       <div className={`${file ? "mobile-sticky-action" : ""} mt-5 flex flex-col items-start gap-3 sm:flex-row sm:items-center`}>
-        <Button type="button" disabled={!file} className="h-12 rounded-none bg-[var(--signal)] px-6 font-display text-[14px] font-semibold text-white hover:bg-[#1D4DD8]" onClick={() => file && onAnalyze({ file, evidence, nameplate, applianceType, modelNumber, notes })}>Analyze {evidence.length > 1 ? `${evidence.length} photos` : "this device"} <ArrowRight size={17} /></Button>
+        <Button type="button" disabled={!file} className="tap-target h-12 rounded-none bg-[var(--signal)] px-6 font-display text-[14px] font-semibold text-white hover:bg-[#1D4DD8]" onClick={() => file && onAnalyze({ file, evidence, nameplate, applianceType, modelNumber, notes })}>Analyze {evidence.length > 1 ? `${evidence.length} photos` : "this device"} <ArrowRight size={17} /></Button>
         <div className="flex items-center gap-2 text-[13px] text-[var(--muted)]"><LockKeyhole size={14} /> Photos are processed for this diagnosis, then not shown publicly.</div>
       </div>
     </div>
@@ -305,7 +339,7 @@ function MiniExample({ label, result, tone }: { label: string; result: string; t
 
 function AnalyzeState({ currentStage }: { currentStage: number }) {
   const items = ["Reading the image and visible symptoms", "Matching against known failure patterns", "Checking the repair path for safety"]; 
-  return <div className="border border-[var(--border)] bg-[var(--surface-alt)] p-6 sm:p-8"><div className="flex items-center gap-3"><Loader2 className="animate-spin text-[var(--signal)]" size={20} /><div className="font-display text-[17px] font-semibold">Building your diagnostic report</div></div><div className="mt-6 space-y-4">{items.map((item, index) => <div key={item} className="flex items-center gap-3 text-[15px] text-[var(--muted)]"><span className={`flex h-6 w-6 items-center justify-center rounded-full border text-[12px] font-display ${index < currentStage ? "border-[var(--signal)] bg-[var(--signal)] text-white" : "border-[#C7CDD4] bg-white"}`}>{index < currentStage ? <Check size={14} /> : index + 1}</span>{item}{index === currentStage && <span className="ml-auto font-mono-data text-[11px] text-[var(--signal)]">IN PROGRESS</span>}</div>)}</div><div className="mt-8 h-1 w-full overflow-hidden bg-white"><div className="h-full w-1/2 animate-pulse bg-[var(--signal)]" /></div><div className="mt-3 text-[13px] text-[var(--muted)]">This state reflects the live diagnosis request. It is not a fixed-duration animation.</div></div>;
+  return <div className="surface-enter border border-[var(--border)] bg-[var(--surface-alt)] p-6 sm:p-8"><div className="flex items-center gap-3"><Loader2 className="animate-spin text-[var(--signal)]" size={20} /><div className="font-display text-[17px] font-semibold">Building your diagnostic report</div><span className="ml-auto flex gap-1" aria-label="Processing"><i className="processing-dot h-1.5 w-1.5 rounded-full bg-[var(--signal)]" /><i className="processing-dot h-1.5 w-1.5 rounded-full bg-[var(--signal)]" /><i className="processing-dot h-1.5 w-1.5 rounded-full bg-[var(--signal)]" /></span></div><div className="mt-6 space-y-4">{items.map((item, index) => <div key={item} className="flex items-center gap-3 text-[15px] text-[var(--muted)]"><span className={`flex h-6 w-6 items-center justify-center rounded-full border text-[12px] font-display ${index < currentStage ? "border-[var(--signal)] bg-[var(--signal)] text-white" : "border-[#C7CDD4] bg-white"}`}>{index < currentStage ? <Check size={14} /> : index + 1}</span>{item}{index === currentStage && <span className="ml-auto font-mono-data text-[11px] text-[var(--signal)]">IN PROGRESS</span>}</div>)}</div><div className="mt-8 h-1 w-full overflow-hidden bg-white"><div className="processing-sweep h-full w-1/2 bg-[var(--signal)]" /></div><div className="mt-3 text-[13px] text-[var(--muted)]">Reading your evidence and checking the safest next step.</div></div>;
 }
 
 function SafetyPanel({ diagnosis }: { diagnosis: StoredDiagnosis }) {
@@ -442,7 +476,7 @@ export default function Home() {
 
   const activeDiagnosis = diagnosis;
   return <div className="min-h-screen bg-[var(--surface)]">
-    <header className="sticky top-0 z-30 border-b border-[var(--border)] bg-white/95 backdrop-blur"><div className="mx-auto flex min-h-[64px] max-w-[1280px] items-center justify-between gap-4 px-5 lg:px-8"><a href="/" className="font-display text-[18px] font-bold tracking-[-.04em]">Bernard</a><div className="flex items-center gap-3 text-[13px] text-[var(--muted)]"><button type="button" onClick={() => activeDiagnosis ? document.getElementById("diagnosis")?.scrollIntoView({ behavior: "smooth" }) : document.getElementById("upload")?.scrollIntoView({ behavior: "smooth" })} className="min-h-11 px-2 font-display font-semibold text-[var(--signal)]">{activeDiagnosis ? "View report" : "Start"}</button>{!isAuthenticated && <button type="button" onClick={() => startLogin()} className="hidden min-h-11 border-l border-[var(--border)] pl-3 font-display font-semibold text-[var(--ink)] sm:inline">Sign in</button>}</div></div></header>
+    <header className="sticky top-0 z-30 border-b border-[var(--border)] bg-white/95 backdrop-blur"><div className="mx-auto flex min-h-[64px] max-w-[1280px] items-center justify-between gap-4 px-5 lg:px-8"><a href="/" aria-label="Bernard home" className="group flex items-center gap-2"><span className="brand-mark flex h-7 w-7 items-center justify-center rounded-md border border-[var(--ink)] font-display text-[14px] font-bold">B</span><span className="brand-wordmark font-display text-[19px] font-semibold tracking-[-.04em]">bernard</span></a><div className="flex items-center gap-3 text-[13px] text-[var(--muted)]"><button type="button" onClick={() => activeDiagnosis ? document.getElementById("diagnosis")?.scrollIntoView({ behavior: "smooth" }) : document.getElementById("upload")?.scrollIntoView({ behavior: "smooth" })} className="tap-target min-h-11 px-2 font-display font-semibold text-[var(--signal)]">{activeDiagnosis ? "View report" : "Start"}</button>{!isAuthenticated && <button type="button" onClick={() => startLogin()} className="tap-target hidden min-h-11 border-l border-[var(--border)] pl-3 font-display font-semibold text-[var(--ink)] sm:inline">Sign in</button>}</div></div></header>
     <nav className="mobile-step-nav" aria-label="Session steps">{stages.map((stage, index) => { const current = activeDiagnosis ? index <= 2 : pipeline === "analyzing" ? index === 1 : index === 0; return <a href={index === 0 ? "#upload" : index === 1 ? "#diagnosis" : "#guided-fix"} key={stage} aria-current={current ? "step" : undefined} className={`rounded-full border px-3 py-1.5 text-[13px] ${current ? "border-[var(--border)] font-display font-semibold" : "border-transparent text-[var(--muted)]"}`}><span>{index + 1}. {stage}</span></a>; })}</nav>
     <div className="mx-auto grid max-w-[1280px] grid-cols-1 lg:grid-cols-[174px_minmax(0,680px)_1fr] lg:gap-12 lg:px-8">
       <aside className="steps-rail order-2 hidden border-r border-[var(--border)] py-10 lg:order-1 lg:block"><div className="sticky top-8"><div className="mb-5 font-display text-[12px] font-semibold text-[var(--muted)]">YOUR SESSION</div>{stages.map((stage, index) => { const current = activeDiagnosis ? index <= 2 : pipeline === "analyzing" ? index === 1 : index === 0; return <a href={index === 0 ? "#upload" : index === 1 ? "#diagnosis" : "#guided-fix"} key={stage} className={`mb-4 flex items-center gap-3 text-left text-[14px] ${current ? "font-display font-semibold text-[var(--ink)]" : "text-[var(--muted)]"}`}><span className={`flex h-6 w-6 items-center justify-center rounded-full border text-[11px] font-mono-data ${current ? "border-[var(--signal)] bg-[var(--signal)] text-white" : "border-[var(--border)] bg-white"}`}>{activeDiagnosis && index < 2 ? <Check size={13} /> : index + 1}</span>{stage}</a>; })}<div className="mt-10 border-t border-[var(--border)] pt-4 text-[13px] leading-5 text-[var(--muted)]">Evidence is processed for this session. Save a repair only when you choose to.</div></div></aside>
