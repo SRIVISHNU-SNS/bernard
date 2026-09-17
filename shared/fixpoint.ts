@@ -47,6 +47,14 @@ export type StoredDiagnosis = DiagnosisResult & {
   completedSteps: number[];
 };
 
+export type NameplateDetails = {
+  appliance_type: string | null;
+  brand: string | null;
+  model_number: string | null;
+  serial_number: string | null;
+  confidence: number;
+};
+
 export const MAX_VIDEO_SECONDS = 30;
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 export const MAX_VIDEO_BYTES = 80 * 1024 * 1024;
@@ -78,6 +86,19 @@ export function formatDuration(minutes: number) {
 export function partSearchUrl(part: PartNeeded) {
   const query = encodeURIComponent(`${part.name} ${part.likely_part_number ?? ""}`.trim());
   return `https://www.google.com/search?q=${query}+appliance+part`;
+}
+
+export function normalizeNameplate(value: unknown): NameplateDetails | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.confidence !== "number") return null;
+  return {
+    appliance_type: typeof candidate.appliance_type === "string" ? candidate.appliance_type : null,
+    brand: typeof candidate.brand === "string" ? candidate.brand : null,
+    model_number: typeof candidate.model_number === "string" ? candidate.model_number : null,
+    serial_number: typeof candidate.serial_number === "string" ? candidate.serial_number : null,
+    confidence: Math.max(0, Math.min(100, Math.round(candidate.confidence))),
+  };
 }
 
 export function isSafetyLevel(value: unknown): value is SafetyLevel {
@@ -227,5 +248,22 @@ export const diagnosisJsonSchema = {
       },
     },
     required: ["probable_causes", "safety_flag", "difficulty", "estimated_cost_range", "estimated_time_minutes", "tools_needed", "parts_needed", "repair_steps"],
+  },
+} as const;
+
+export const nameplateJsonSchema = {
+  name: "fixpoint_nameplate",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      appliance_type: { type: ["string", "null"] },
+      brand: { type: ["string", "null"] },
+      model_number: { type: ["string", "null"] },
+      serial_number: { type: ["string", "null"] },
+      confidence: { type: "number", minimum: 0, maximum: 100 },
+    },
+    required: ["appliance_type", "brand", "model_number", "serial_number", "confidence"],
   },
 } as const;

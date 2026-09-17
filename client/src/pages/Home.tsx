@@ -144,6 +144,10 @@ function UploadPanel({ onAnalyze }: { onAnalyze: (payload: { file: File; namepla
   const [notes, setNotes] = useState("");
   const [dragActive, setDragActive] = useState(false);
   const [error, setError] = useState("");
+  const [ocrStatus, setOcrStatus] = useState<"idle" | "reading" | "done" | "error">("idle");
+  const [brand, setBrand] = useState("");
+  const [serialNumber, setSerialNumber] = useState("");
+  const ocrMutation = trpc.diagnosis.ocrNameplate.useMutation();
   const inputRef = useRef<HTMLInputElement>(null);
   const nameplateRef = useRef<HTMLInputElement>(null);
 
@@ -170,7 +174,7 @@ function UploadPanel({ onAnalyze }: { onAnalyze: (payload: { file: File; namepla
     setFile(candidate);
   };
 
-  const pickNameplate = (candidate: File | null) => {
+  const pickNameplate = async (candidate: File | null) => {
     if (!candidate) return;
     if (!candidate.type.startsWith("image/")) {
       setError("The nameplate image needs to be a photo.");
@@ -182,6 +186,21 @@ function UploadPanel({ onAnalyze }: { onAnalyze: (payload: { file: File; namepla
     }
     setNameplate(candidate);
     setError("");
+    setOcrStatus("reading");
+    try {
+      const uploaded = await uploadFile(candidate, `nameplate-${candidate.name}`);
+      const details = await ocrMutation.mutateAsync({ fileKey: uploaded.key });
+      if (details.appliance_type) {
+        const match = applianceOptions.find(option => option.toLowerCase() === details.appliance_type?.toLowerCase());
+        if (match) setApplianceType(match);
+      }
+      if (details.model_number) setModelNumber(details.model_number);
+      if (details.brand) setBrand(details.brand);
+      if (details.serial_number) setSerialNumber(details.serial_number);
+      setOcrStatus("done");
+    } catch {
+      setOcrStatus("error");
+    }
   };
 
   return (
@@ -221,12 +240,12 @@ function UploadPanel({ onAnalyze }: { onAnalyze: (payload: { file: File; namepla
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="flex items-center gap-2 font-display text-[14px] font-semibold"><Paperclip size={15} className="text-[var(--signal)]" /> Optional model / serial plate</div>
-              <div className="mt-1 max-w-[320px] text-[14px] leading-5 text-[var(--muted)]">A clear plate photo anchors the result to your exact machine.</div>
+            <div className="mt-1 max-w-[320px] text-[14px] leading-5 text-[var(--muted)]">We’ll read the model and serial details for you.</div>
             </div>
             <button type="button" className="border border-[var(--border)] p-2 text-[var(--signal)] hover:border-[var(--signal)]" aria-label="Add model plate photo" onClick={() => nameplateRef.current?.click()}><Plus size={16} /></button>
             <input ref={nameplateRef} type="file" accept="image/*" className="hidden" onChange={event => pickNameplate(event.target.files?.[0] ?? null)} />
           </div>
-          {nameplate && <div className="mt-3 flex items-center justify-between bg-[var(--surface-alt)] px-3 py-2 text-[13px]"><span className="truncate font-mono-data">{nameplate.name}</span><button type="button" onClick={() => setNameplate(null)} aria-label="Remove model plate photo"><X size={15} /></button></div>}
+          {nameplate && <div className="mt-3 bg-[var(--surface-alt)] px-3 py-2 text-[13px]"><div className="flex items-center justify-between"><span className="truncate font-mono-data">{nameplate.name}</span><button type="button" onClick={() => { setNameplate(null); setOcrStatus("idle"); setBrand(""); setSerialNumber(""); }} aria-label="Remove model plate photo"><X size={15} /></button></div><div className="mt-1 text-[var(--muted)]">{ocrStatus === "reading" ? "Reading the plate…" : ocrStatus === "done" ? `Details added${brand ? ` · ${brand}` : ""}${serialNumber ? ` · serial ${serialNumber}` : ""}` : ocrStatus === "error" ? "Couldn’t read it clearly. You can enter the model below." : "Ready"}</div></div>}
         </div>
         <label className="border border-[var(--border)] bg-white p-4">
           <span className="font-display text-[14px] font-semibold">Anything else you’ve noticed?</span>
@@ -362,15 +381,15 @@ export default function Home() {
 
   const activeDiagnosis = diagnosis;
   return <div className="min-h-screen bg-[var(--surface)]">
-    <header className="border-b border-[var(--border)] bg-white"><div className="mx-auto flex min-h-[64px] max-w-[1280px] items-center justify-between gap-4 px-5 lg:px-8"><a href="/" className="font-display text-[18px] font-bold tracking-[-.04em]">Fixpoint</a><div className="flex items-center gap-3 text-[13px] text-[var(--muted)]"><span className="hidden sm:inline">Appliance diagnosis instrument</span><span className="h-1 w-1 rounded-full bg-[var(--signal)]" /><button type="button" onClick={() => activeDiagnosis ? document.getElementById("diagnosis")?.scrollIntoView({ behavior: "smooth" }) : document.getElementById("upload")?.scrollIntoView({ behavior: "smooth" })} className="font-display font-semibold text-[var(--signal)]">{activeDiagnosis ? "View report" : "Start a diagnosis"}</button>{!isAuthenticated && <button type="button" onClick={() => startLogin()} className="hidden border-l border-[var(--border)] pl-3 font-display font-semibold text-[var(--ink)] sm:inline">Sign in</button>}</div></div></header>
+    <header className="border-b border-[var(--border)] bg-white"><div className="mx-auto flex min-h-[64px] max-w-[1280px] items-center justify-between gap-4 px-5 lg:px-8"><a href="/" className="font-display text-[18px] font-bold tracking-[-.04em]">Bernard</a><div className="flex items-center gap-3 text-[13px] text-[var(--muted)]"><button type="button" onClick={() => activeDiagnosis ? document.getElementById("diagnosis")?.scrollIntoView({ behavior: "smooth" }) : document.getElementById("upload")?.scrollIntoView({ behavior: "smooth" })} className="font-display font-semibold text-[var(--signal)]">{activeDiagnosis ? "View report" : "Start"}</button>{!isAuthenticated && <button type="button" onClick={() => startLogin()} className="hidden border-l border-[var(--border)] pl-3 font-display font-semibold text-[var(--ink)] sm:inline">Sign in</button>}</div></div></header>
     <div className="mx-auto grid max-w-[1280px] grid-cols-1 lg:grid-cols-[174px_minmax(0,680px)_1fr] lg:gap-12 lg:px-8">
       <aside className="steps-rail order-2 hidden border-r border-[var(--border)] py-10 lg:order-1 lg:block"><div className="sticky top-8"><div className="mb-5 font-display text-[12px] font-semibold text-[var(--muted)]">YOUR SESSION</div>{stages.map((stage, index) => { const current = activeDiagnosis ? index <= 2 : pipeline === "analyzing" ? index === 1 : index === 0; return <a href={index === 0 ? "#upload" : index === 1 ? "#diagnosis" : "#guided-fix"} key={stage} className={`mb-4 flex items-center gap-3 text-left text-[14px] ${current ? "font-display font-semibold text-[var(--ink)]" : "text-[var(--muted)]"}`}><span className={`flex h-6 w-6 items-center justify-center rounded-full border text-[11px] font-mono-data ${current ? "border-[var(--signal)] bg-[var(--signal)] text-white" : "border-[var(--border)] bg-white"}`}>{activeDiagnosis && index < 2 ? <Check size={13} /> : index + 1}</span>{stage}</a>; })}<div className="mt-10 border-t border-[var(--border)] pt-4 text-[13px] leading-5 text-[var(--muted)]">Evidence is processed for this session. Save a repair only when you choose to.</div></div></aside>
       <main className="order-1 min-w-0 px-5 py-10 sm:py-14 lg:order-2 lg:px-0">
-        {!activeDiagnosis && <section id="upload" className="scroll-mt-8"><div className="mb-7"><div className="mb-2 font-display text-[13px] font-semibold text-[var(--signal)]">01 · SHOW US THE PROBLEM</div><h1 className="max-w-[630px] font-display text-[34px] font-semibold leading-[1.12] tracking-[-.045em] sm:text-[44px]">We’ll tell you what’s wrong — and how to fix it.</h1><p className="mt-4 max-w-[590px] text-[18px] leading-7 text-[var(--muted)]">Start with a clear photo or a short video. Fixpoint turns visible symptoms into a ranked diagnosis, a safety verdict, and a repair path.</p></div>{pipeline === "analyzing" ? <AnalyzeState currentStage={analysisStage} /> : <UploadPanel onAnalyze={handleAnalyze} />}{uploadError && pipeline !== "analyzing" && <div className="mt-5 flex items-start gap-2 border-l-2 border-[var(--danger)] bg-[#FFF4F4] px-3 py-2 text-[14px] leading-5 text-[#8F2D2D]"><AlertTriangle size={17} className="mt-0.5 shrink-0" />{uploadError}</div>}<div className="mt-16 border-t border-[var(--border)] pt-8"><div className="mb-4 font-display text-[13px] font-semibold text-[var(--muted)]">EXAMPLES OF THE REPORT YOU’LL GET</div><div className="grid gap-3 sm:grid-cols-3"><MiniExample label="DISHWASHER · LEAK" result="Door gasket is the likely first check" tone="safe" /><MiniExample label="DRYER · NO HEAT" result="Thermal fuse needs a careful test" tone="caution" /><MiniExample label="FRIDGE · WARM" result="Sealed system issue — call a pro" tone="danger" /></div></div><div className="mt-14 border-t border-[var(--border)] pt-8"><SectionHeading eyebrow="HOW IT WORKS" title="Three steps, no chatbot maze." /><div className="grid gap-5 sm:grid-cols-3">{[["01", "Upload", "Show the symptom and, if you can, the model plate."], ["02", "Diagnose", "Get ranked causes, confidence, cost, time, and a safety call."], ["03", "Fix", "Follow the tools-first guide or get a clear professional handoff."]].map(([number, title, detail]) => <div key={number} className="border-t-2 border-[var(--ink)] pt-3"><div className="font-mono-data text-[12px] text-[var(--muted)]">{number}</div><div className="mt-2 font-display text-[16px] font-semibold">{title}</div><div className="mt-2 text-[15px] leading-6 text-[var(--muted)]">{detail}</div></div>)}</div></div></section>}
+        {!activeDiagnosis && <section id="upload" className="scroll-mt-8"><div className="mb-7"><div className="mb-2 font-display text-[13px] font-semibold text-[var(--signal)]">BERNARD</div><h1 className="max-w-[630px] font-display text-[34px] font-semibold leading-[1.12] tracking-[-.045em] sm:text-[44px]">Show me what’s wrong.</h1></div>{pipeline === "analyzing" ? <AnalyzeState currentStage={analysisStage} /> : <UploadPanel onAnalyze={handleAnalyze} />}{uploadError && pipeline !== "analyzing" && <div className="mt-5 flex items-start gap-2 border-l-2 border-[var(--danger)] bg-[#FFF4F4] px-3 py-2 text-[14px] leading-5 text-[#8F2D2D]"><AlertTriangle size={17} className="mt-0.5 shrink-0" />{uploadError}</div>}</section>}
         {activeDiagnosis && <Results diagnosis={activeDiagnosis} onReset={() => { setDiagnosis(null); setPipeline("idle"); setUploadError(""); window.scrollTo({ top: 0, behavior: "smooth" }); }} onLogin={() => startLogin()} />}
       </main>
       <div className="order-3 hidden lg:block" />
     </div>
-    <footer className="border-t border-[var(--border)] bg-[var(--surface-alt)]"><div className="mx-auto flex max-w-[1280px] flex-col gap-2 px-5 py-6 text-[13px] text-[var(--muted)] sm:flex-row sm:items-center sm:justify-between lg:px-8"><div className="flex items-center gap-2"><Sparkles size={14} className="text-[var(--signal)]" /> Fixpoint reports probabilities, not guarantees. Use your judgment.</div><div>Images are discarded from the user-facing history unless you save the repair.</div></div></footer>
+    <footer className="border-t border-[var(--border)] bg-[var(--surface-alt)]"><div className="mx-auto flex max-w-[1280px] flex-col gap-2 px-5 py-6 text-[13px] text-[var(--muted)] sm:flex-row sm:items-center sm:justify-between lg:px-8"><div>Bernard</div><div>Upload a clear photo. Get a clear next step.</div></div></footer>
   </div>;
 }

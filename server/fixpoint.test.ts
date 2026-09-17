@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { safetyGate, type DiagnosisResult } from "@shared/fixpoint";
+import { normalizeNameplate, safetyGate, type DiagnosisResult } from "@shared/fixpoint";
 
 const baseResult: DiagnosisResult = {
   probable_causes: [{ cause: "Compressor issue", confidence: 72, explanation: "The unit is running but not cooling." }],
@@ -27,5 +27,24 @@ describe("Fixpoint safety gate", () => {
     const result = safetyGate(baseResult);
     expect(result.safety_flag.level).toBe("green");
     expect(result.repair_steps).toHaveLength(1);
+  });
+});
+
+describe("Bernard nameplate OCR", () => {
+  it("normalizes extracted model and serial details", () => {
+    const result = normalizeNameplate({
+      appliance_type: "Refrigerator",
+      brand: "Northstar",
+      model_number: "RF28T5001SR",
+      serial_number: "1A2B3C4D",
+      confidence: 108,
+    });
+    expect(result).toEqual({
+      appliance_type: "Refrigerator",
+      brand: "Northstar",
+      model_number: "RF28T5001SR",
+      serial_number: "1A2B3C4D",
+      confidence: 100,
+    });
   });
 });

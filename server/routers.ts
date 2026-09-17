@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
-import { diagnosisJsonSchema, normalizeDiagnosis, safetyGate, type DiagnosisResult } from "@shared/fixpoint";
+import { diagnosisJsonSchema, nameplateJsonSchema, normalizeDiagnosis, normalizeNameplate, safetyGate, type DiagnosisResult } from "@shared/fixpoint";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { invokeLLM } from "./_core/llm";
 import { systemRouter } from "./_core/systemRouter";
@@ -107,6 +107,34 @@ export const appRouter = router({
       });
       return { ...diagnosis, id, applianceType: input.applianceType, modelNumber: input.modelNumber ?? null, notes: input.notes ?? null, completedSteps: [] };
     }),
+    ocrNameplate: publicProcedure
+      .input(z.object({ fileKey: z.string().min(1).max(500) }))
+      .mutation(async ({ input }) => {
+        const imageUrl = await storageGetSignedUrl(input.fileKey);
+        const response = await invokeLLM({
+          model: "claude-sonnet-4-6",
+          messages: [
+            {
+              role: "system",
+              content: "Read this appliance nameplate carefully. Return only the requested JSON. Transcribe model and serial characters exactly when legible; use null when a value cannot be read. Do not infer a model number from a partial character sequence.",
+            },
+            {
+              role: "user",
+              content: [
+                { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
+                { type: "text", text: "Extract the appliance type, brand, model number, serial number, and your confidence in the read." },
+              ],
+            },
+          ],
+          response_format: { type: "json_schema", json_schema: nameplateJsonSchema },
+          maxTokens: 400,
+        });
+        const content = response.choices?.[0]?.message?.content;
+        const raw = typeof content === "string" ? content : Array.isArray(content) ? content.filter(part => part.type === "text").map(part => part.text).join("\n") : "";
+        const details = normalizeNameplate(JSON.parse(raw));
+        if (!details) throw new Error("The nameplate could not be read clearly.");
+        return details;
+      }),
     updateProgress: publicProcedure
       .input(z.object({ diagnosisId: z.number().int().nonnegative(), sessionId: z.string().min(8).max(80), completedSteps: z.array(z.number().int().nonnegative()).max(50) }))
       .mutation(async ({ input }) => {
