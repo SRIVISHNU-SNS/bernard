@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatInrRange, matchApplianceType, normalizeNameplate, safetyGate, type DiagnosisResult } from "@shared/fixpoint";
+import { formatInrRange, matchApplianceType, normalizeDiagnosis, normalizeNameplate, safetyGate, type DiagnosisResult } from "@shared/fixpoint";
 
 const baseResult: DiagnosisResult = {
   probable_causes: [{ cause: "Compressor issue", confidence: 72, explanation: "The unit is running but not cooling." }],
@@ -10,6 +10,7 @@ const baseResult: DiagnosisResult = {
   tools_needed: ["Phillips screwdriver"],
   parts_needed: [{ name: "Start relay", likely_part_number: null, notes: "Confirm against the model plate." }],
   repair_steps: [{ title: "Unplug the appliance", detail: "Disconnect power before inspecting the component.", caution: null }],
+  error_code: null,
 };
 
 describe("Fixpoint safety gate", () => {
@@ -63,5 +64,22 @@ describe("Bernard nameplate OCR", () => {
 describe("Bernard local pricing", () => {
   it("formats INR estimates for Indian users", () => {
     expect(formatInrRange({ low: 1200, high: 4500, currency: "INR" })).toBe("₹1,200–₹4,500");
+  });
+});
+
+describe("Bernard error-code results", () => {
+  it("keeps a clear code and meaning while clamping confidence", () => {
+    const result = normalizeDiagnosis({
+      probable_causes: [],
+      safety_flag: { level: "green", reason: "Looks safe." },
+      difficulty: "moderate",
+      estimated_cost_range: { low: 1000, high: 2000, currency: "INR" },
+      estimated_time_minutes: 30,
+      tools_needed: [],
+      parts_needed: [],
+      repair_steps: [],
+      error_code: { code: "E15", meaning: "Water was detected where it should not be.", confidence: 120 },
+    });
+    expect(result?.error_code).toEqual({ code: "E15", meaning: "Water was detected where it should not be.", confidence: 100 });
   });
 });

@@ -28,6 +28,8 @@ import {
   applianceOptions,
   formatDuration,
   formatInrRange,
+  type EvidenceRole,
+  type ErrorCodeResult,
   matchApplianceType,
   MAX_IMAGE_BYTES,
   MAX_VIDEO_BYTES,
@@ -42,6 +44,7 @@ const stages = ["Evidence", "Diagnosis", "Guided fix"] as const;
 type PipelineState = "idle" | "analyzing" | "results";
 
 type UploadRef = { key: string; url: string };
+type EvidenceItem = { file: File; role: EvidenceRole; upload?: UploadRef; errorCode?: ErrorCodeResult | null; reading?: boolean };
 
 function fileToDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
@@ -138,8 +141,9 @@ function SectionHeading({ eyebrow, title, children }: { eyebrow: string; title: 
   );
 }
 
-function UploadPanel({ onAnalyze }: { onAnalyze: (payload: { file: File; nameplate: File | null; applianceType: string; modelNumber: string; notes: string }) => void }) {
+function UploadPanel({ onAnalyze }: { onAnalyze: (payload: { file: File; evidence: EvidenceItem[]; nameplate: File | null; applianceType: string; modelNumber: string; notes: string }) => void }) {
   const [file, setFile] = useState<File | null>(null);
+  const [evidence, setEvidence] = useState<EvidenceItem[]>([]);
   const [nameplate, setNameplate] = useState<File | null>(null);
   const [applianceType, setApplianceType] = useState("Refrigerator");
   const [modelNumber, setModelNumber] = useState("");
@@ -151,6 +155,7 @@ function UploadPanel({ onAnalyze }: { onAnalyze: (payload: { file: File; namepla
   const [serialNumber, setSerialNumber] = useState("");
   const ocrMutation = trpc.diagnosis.ocrNameplate.useMutation();
   const inputRef = useRef<HTMLInputElement>(null);
+  const evidenceRef = useRef<HTMLInputElement>(null);
   const nameplateRef = useRef<HTMLInputElement>(null);
 
   const pickFile = async (candidate: File | null) => {
@@ -174,6 +179,19 @@ function UploadPanel({ onAnalyze }: { onAnalyze: (payload: { file: File; namepla
     }
     setError("");
     setFile(candidate);
+    setEvidence(current => [{ file: candidate, role: "problem" as EvidenceRole }, ...current.filter(item => item.file !== candidate)].slice(0, 4));
+  };
+
+  const addEvidence = (candidates: FileList | null) => {
+    if (!candidates) return;
+    const next = Array.from(candidates).filter(candidate => candidate.type.startsWith("image/") && candidate.size <= MAX_IMAGE_BYTES).slice(0, 4 - evidence.length);
+    if (!next.length) return;
+    setEvidence(current => [...current, ...next.map((file, index) => ({ file, role: index === 0 && !current.some(item => item.role === "device") ? "device" as const : "other" as const }))].slice(0, 4));
+  };
+
+  const removeEvidence = (candidate: File) => {
+    setEvidence(current => current.filter(item => item.file !== candidate));
+    if (candidate === file) setFile(null);
   };
 
   const pickNameplate = async (candidate: File | null) => {
@@ -237,6 +255,11 @@ function UploadPanel({ onAnalyze }: { onAnalyze: (payload: { file: File; namepla
         )}
       </div>
 
+      <div className="mt-4 mobile-card border border-[var(--border)] bg-white p-4">
+        <div className="flex items-center justify-between gap-3"><div><div className="font-display text-[14px] font-semibold">Add more photos</div><div className="mt-1 text-[14px] text-[var(--muted)]">Show the device, problem, label, or error screen.</div></div><button type="button" disabled={evidence.length >= 4} className="min-h-11 border border-[var(--border)] px-3 font-display text-[13px] font-semibold text-[var(--signal)] disabled:opacity-40" onClick={() => evidenceRef.current?.click()}><Plus size={15} className="mr-1 inline" /> Add</button><input ref={evidenceRef} type="file" accept="image/*" multiple className="hidden" onChange={event => addEvidence(event.target.files)} /></div>
+        {evidence.length > 0 && <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">{evidence.map(item => <div key={`${item.file.name}-${item.file.lastModified}`} className="relative overflow-hidden rounded-md border border-[var(--border)] bg-[var(--surface-alt)]"><img src={URL.createObjectURL(item.file)} alt="Evidence preview" className="aspect-square w-full object-cover" /><button type="button" onClick={() => removeEvidence(item.file)} className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-[var(--ink)]" aria-label={`Remove ${item.file.name}`}><X size={14} /></button><select value={item.role} onChange={event => setEvidence(current => current.map(entry => entry.file === item.file ? { ...entry, role: event.target.value as EvidenceRole } : entry))} className="absolute bottom-1 left-1 right-1 h-7 rounded border-0 bg-white/90 px-1 text-[11px] font-display"><option value="problem">Problem</option><option value="device">Device</option><option value="label">Label</option><option value="error_code">Error code</option><option value="other">Other</option></select></div>)}</div>}
+      </div>
+
       <div className="mt-4 grid gap-4 md:grid-cols-[1fr_1fr]">
         <div className="mobile-card border border-[var(--border)] bg-white p-4">
           <div className="flex items-start justify-between gap-3">
@@ -268,8 +291,8 @@ function UploadPanel({ onAnalyze }: { onAnalyze: (payload: { file: File; namepla
         </label>
       </div>
       {error && <div role="alert" className="mt-4 flex items-start gap-2 border-l-2 border-[var(--danger)] bg-[#FFF4F4] px-3 py-2 text-[14px] leading-5 text-[#8F2D2D]"><AlertTriangle size={17} className="mt-0.5 shrink-0" />{error}</div>}
-      <div className="mobile-sticky-action mt-5 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
-        <Button type="button" disabled={!file} className="h-12 rounded-none bg-[var(--signal)] px-6 font-display text-[14px] font-semibold text-white hover:bg-[#1D4DD8]" onClick={() => file && onAnalyze({ file, nameplate, applianceType, modelNumber, notes })}>Analyze this device <ArrowRight size={17} /></Button>
+      <div className={`${file ? "mobile-sticky-action" : ""} mt-5 flex flex-col items-start gap-3 sm:flex-row sm:items-center`}>
+        <Button type="button" disabled={!file} className="h-12 rounded-none bg-[var(--signal)] px-6 font-display text-[14px] font-semibold text-white hover:bg-[#1D4DD8]" onClick={() => file && onAnalyze({ file, evidence, nameplate, applianceType, modelNumber, notes })}>Analyze {evidence.length > 1 ? `${evidence.length} photos` : "this device"} <ArrowRight size={17} /></Button>
         <div className="flex items-center gap-2 text-[13px] text-[var(--muted)]"><LockKeyhole size={14} /> Photos are processed for this diagnosis, then not shown publicly.</div>
       </div>
     </div>
@@ -289,7 +312,7 @@ function SafetyPanel({ diagnosis }: { diagnosis: StoredDiagnosis }) {
   const level = diagnosis.safety_flag.level;
   const tone = level === "green" ? "safe" : level === "amber" ? "caution" : "danger";
   const Icon = level === "green" ? ShieldCheck : AlertTriangle;
-  return <div className={`resolve-panel border-l-4 p-5 ${level === "green" ? "border-[var(--safe)] bg-[#F1FBF6]" : level === "amber" ? "border-[var(--caution)] bg-[#FFF9EA]" : "border-[var(--danger)] bg-[#FFF4F4]"}`}><div className="flex items-start gap-4"><Icon size={25} className={level === "green" ? "text-[var(--safe)]" : level === "amber" ? "text-[#8E6110]" : "text-[var(--danger)]"} /><div className="min-w-0"><div className={`font-display text-[13px] font-semibold ${tone === "safe" ? "text-[var(--safe)]" : tone === "caution" ? "text-[#8E6110]" : "text-[var(--danger)]"}`}>SAFETY VERDICT</div><div className="mt-1 font-display text-[20px] font-semibold tracking-[-.02em]">{safetyLabel(level)}</div><p className="mt-2 max-w-[580px] text-[16px] leading-6">{diagnosis.safety_flag.reason}</p></div></div>{level === "red" && <div className="mt-5 flex flex-col gap-3 border-t border-[#E8BABA] pt-4 sm:flex-row sm:items-center sm:justify-between"><div className="text-[14px] text-[#8F2D2D]">Do not remove panels or test live components.</div><a href="https://www.google.com/search?q=appliance+repair+professional" target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 border border-[var(--danger)] px-4 py-2 font-display text-[13px] font-semibold text-[var(--danger)] hover:bg-white">Find a professional <ArrowRight size={15} /></a></div>}</div>;
+  return <div className={`mobile-card resolve-panel border-l-4 p-5 ${level === "green" ? "border-[var(--safe)] bg-[#F1FBF6]" : level === "amber" ? "border-[var(--caution)] bg-[#FFF9EA]" : "border-[var(--danger)] bg-[#FFF4F4]"}`}><div className="flex items-start gap-4"><Icon size={25} className={level === "green" ? "text-[var(--safe)]" : level === "amber" ? "text-[#8E6110]" : "text-[var(--danger)]"} /><div className="min-w-0"><div className={`font-display text-[13px] font-semibold ${tone === "safe" ? "text-[var(--safe)]" : tone === "caution" ? "text-[#8E6110]" : "text-[var(--danger)]"}`}>SAFETY VERDICT</div><div className="mt-1 font-display text-[20px] font-semibold tracking-[-.02em]">{safetyLabel(level)}</div><p className="mt-2 max-w-[580px] text-[16px] leading-6">{diagnosis.safety_flag.reason}</p></div></div>{level === "red" && <div className="mt-5 flex flex-col gap-3 border-t border-[#E8BABA] pt-4 sm:flex-row sm:items-center sm:justify-between"><div className="text-[14px] text-[#8F2D2D]">Do not remove panels or test live components.</div><a href="https://www.google.com/search?q=appliance+repair+professional" target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 border border-[var(--danger)] px-4 py-2 font-display text-[13px] font-semibold text-[var(--danger)] hover:bg-white">Find a professional <ArrowRight size={15} /></a></div>}</div>;
 }
 
 const applianceIllustrations: Record<string, string> = {
@@ -305,6 +328,17 @@ const applianceIllustrations: Record<string, string> = {
   "Other device": "/manus-storage/bernard-generic-device_b3b799fc.png",
 };
 
+function difficultyCopy(value: string) {
+  if (value === "easy") return { label: "Easy", detail: "A careful beginner can try this", tone: "safe" as const };
+  if (value === "moderate") return { label: "Some experience", detail: "Take your time and follow each step", tone: "caution" as const };
+  if (value === "professional_only") return { label: "Professional only", detail: "Get a qualified repair person", tone: "danger" as const };
+  return { label: "Advanced", detail: "Best for someone with repair experience", tone: "caution" as const };
+}
+
+function ErrorCodeCard({ code }: { code: NonNullable<StoredDiagnosis["error_code"]> }) {
+  return <div className="mobile-card mt-5 border border-[#BCD0FF] bg-[#F3F6FF] p-4 sm:p-5"><div className="flex items-start gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white font-mono-data font-semibold text-[var(--signal)]">!</div><div><div className="font-display text-[13px] font-semibold text-[var(--signal)]">ERROR CODE FOUND</div><div className="mt-1 font-mono-data text-[22px] font-semibold tracking-[-.02em]">{code.code}</div><p className="mt-1 text-[15px] leading-6 text-[var(--muted)]">{code.meaning}</p></div></div></div>;
+}
+
 function Results({ diagnosis, onReset, onLogin }: { diagnosis: StoredDiagnosis; onReset: () => void; onLogin: () => void }) {
   const [whyOpen, setWhyOpen] = useState(false);
   const [completedSteps, setCompletedSteps] = useState<number[]>(diagnosis.completedSteps || []);
@@ -317,10 +351,10 @@ function Results({ diagnosis, onReset, onLogin }: { diagnosis: StoredDiagnosis; 
     updateProgress.mutate({ diagnosisId: diagnosis.id, sessionId: getSessionId(), completedSteps: next });
   };
   return <>
-    <section id="diagnosis" className="scroll-mt-8"><SectionHeading eyebrow="02 · RESULT" title="Here’s the likely problem"><div className="flex gap-2 no-print"><Button variant="outline" size="sm" className="rounded-none border-[var(--border)] bg-white font-display text-[13px]" onClick={onReset}><RotateCcw size={14} /> New photo</Button><Button variant="outline" size="sm" className="rounded-none border-[var(--border)] bg-white font-display text-[13px]" onClick={() => window.print()}><Printer size={14} /> Print</Button></div></SectionHeading><SafetyPanel diagnosis={diagnosis} />
+    <section id="diagnosis" className="scroll-mt-8"><SectionHeading eyebrow="02 · RESULT" title="Here’s the likely problem"><div className="flex gap-2 no-print"><Button variant="outline" size="sm" className="rounded-none border-[var(--border)] bg-white font-display text-[13px]" onClick={onReset}><RotateCcw size={14} /> New photo</Button><Button variant="outline" size="sm" className="rounded-none border-[var(--border)] bg-white font-display text-[13px]" onClick={() => window.print()}><Printer size={14} /> Print</Button></div></SectionHeading><SafetyPanel diagnosis={diagnosis} />{diagnosis.error_code && <ErrorCodeCard code={diagnosis.error_code} />}
       <div className="mt-6 grid gap-5 md:grid-cols-[1fr_220px]">
         <div className="border border-[var(--border)] bg-white p-5"><div className="mb-4 flex items-center justify-between"><div className="font-display text-[14px] font-semibold">Most likely cause</div><span className="font-mono-data text-[12px] text-[var(--muted)]">{diagnosis.probable_causes[0]?.confidence ?? 0}% likely</span></div>{diagnosis.probable_causes.length ? <div className="space-y-5">{diagnosis.probable_causes.slice(0, 3).map((cause, index) => <div key={`${cause.cause}-${index}`}><div className="flex items-start gap-4"><div className="font-mono-data text-[12px] text-[var(--muted)]">{index === 0 ? "01" : "—"}</div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-baseline justify-between gap-2"><div className={`font-display font-semibold ${index === 0 ? "text-[20px]" : "text-[15px] text-[var(--muted)]"}`}>{cause.cause}</div>{index === 0 && <div className="font-mono-data text-[13px] font-medium text-[var(--signal)]">{cause.confidence}%</div>}</div>{index === 0 && <><div className="mt-2 h-1 bg-[var(--surface-alt)]"><div className="h-1 bg-[var(--signal)]" style={{ width: `${cause.confidence}%` }} /></div><p className="mt-2 text-[15px] leading-6 text-[var(--muted)]">{cause.explanation}</p></>}</div></div></div>)}</div> : <div className="text-[15px] text-[var(--muted)]">We need a closer photo of the problem area.</div>}<button type="button" className="mt-5 flex w-full items-center justify-between border-t border-[var(--border)] pt-4 text-left font-display text-[13px] font-semibold" onClick={() => setWhyOpen(!whyOpen)}><span className="flex items-center gap-2"><CircleHelp size={15} className="text-[var(--signal)]" /> Why we think this</span><ChevronDown size={16} className={`transition-transform ${whyOpen ? "rotate-180" : ""}`} /></button>{whyOpen && <div className="mt-3 bg-[var(--surface-alt)] p-3 text-[14px] leading-6 text-[var(--muted)]">We compare what is visible in your photo with common appliance failure patterns. The percentage is a confidence estimate, not a guarantee.</div>}</div>
-        <div className="border border-[var(--border)] bg-[var(--surface-alt)] p-5"><img src={applianceIllustrations[diagnosis.applianceType] ?? applianceIllustrations["Other device"]} alt={`${diagnosis.applianceType} illustration`} className="mx-auto mb-4 h-32 w-32 object-contain" /><div className="font-display text-[13px] font-semibold text-[var(--muted)]">AT A GLANCE</div><div className="mt-4 space-y-4"><div><div className="text-[13px] text-[var(--muted)]">How hard</div><div className="mt-1 font-display text-[16px] font-semibold capitalize">{diagnosis.difficulty.replace("_", " ")}</div></div><div><div className="text-[13px] text-[var(--muted)]">Likely cost in India</div><div className="mt-1 font-display text-[18px] font-semibold">{formatInrRange(diagnosis.estimated_cost_range)}</div></div><div><div className="text-[13px] text-[var(--muted)]">Time needed</div><div className="mt-1 font-mono-data text-[16px]">{formatDuration(diagnosis.estimated_time_minutes)}</div></div></div></div>
+        <div className="mobile-card border border-[var(--border)] bg-[var(--surface-alt)] p-5"><img src={applianceIllustrations[diagnosis.applianceType] ?? applianceIllustrations["Other device"]} alt={`${diagnosis.applianceType} illustration`} className="mx-auto mb-4 h-32 w-32 object-contain" /><div className="font-display text-[13px] font-semibold text-[var(--muted)]">AT A GLANCE</div><div className="mt-4 space-y-4"><div><div className="text-[13px] text-[var(--muted)]">Repair difficulty</div><div className="mt-1"><StatusChip tone={difficultyCopy(diagnosis.difficulty).tone}>{difficultyCopy(diagnosis.difficulty).label}</StatusChip></div><div className="mt-1 text-[13px] text-[var(--muted)]">{difficultyCopy(diagnosis.difficulty).detail}</div></div><div><div className="text-[13px] text-[var(--muted)]">Likely cost in India</div><div className="mt-1 font-display text-[18px] font-semibold">{formatInrRange(diagnosis.estimated_cost_range)}</div></div><div><div className="text-[13px] text-[var(--muted)]">Time needed</div><div className="mt-1 font-mono-data text-[16px]">{formatDuration(diagnosis.estimated_time_minutes)}</div></div></div></div>
       </div>
     </section>
 
@@ -347,6 +381,7 @@ export default function Home() {
   const [diagnosis, setDiagnosis] = useState<StoredDiagnosis | null>(null);
   const [uploadError, setUploadError] = useState("");
   const diagnosisMutation = trpc.diagnosis.diagnose.useMutation();
+  const errorCodeMutation = trpc.diagnosis.readErrorCode.useMutation();
   const latestInput = useMemo(() => ({ sessionId }), [sessionId]);
   const latest = trpc.diagnosis.latest.useQuery(latestInput, { enabled: !diagnosis });
 
@@ -363,12 +398,22 @@ export default function Home() {
     return () => window.clearInterval(timer);
   }, [pipeline]);
 
-  const handleAnalyze = async (payload: { file: File; nameplate: File | null; applianceType: string; modelNumber: string; notes: string }) => {
+  const handleAnalyze = async (payload: { file: File; evidence: EvidenceItem[]; nameplate: File | null; applianceType: string; modelNumber: string; notes: string }) => {
     setUploadError("");
     setPipeline("analyzing");
     setAnalysisStage(0);
     try {
-      const primary = await uploadFile(payload.file);
+      const evidenceUploads = await Promise.all(payload.evidence.map(async item => ({ ...item, upload: await uploadFile(item.file, `evidence-${item.role}-${item.file.name}`) })));
+      const primary = evidenceUploads[0]?.upload ?? await uploadFile(payload.file);
+      const errorCodePhoto = evidenceUploads.find(item => item.role === "error_code");
+      let detectedErrorCode: ErrorCodeResult | null = null;
+      if (errorCodePhoto?.upload) {
+        try {
+          detectedErrorCode = await errorCodeMutation.mutateAsync({ fileKey: errorCodePhoto.upload.key });
+        } catch {
+          detectedErrorCode = null;
+        }
+      }
       const nameplate = payload.nameplate ? await uploadFile(payload.nameplate, `nameplate-${payload.nameplate.name}`) : null;
       let frame: UploadRef | null = null;
       if (payload.file.type.startsWith("video/")) {
@@ -382,10 +427,11 @@ export default function Home() {
         notes: payload.notes || undefined,
         fileKey: primary.key,
         fileMime: payload.file.type,
+        evidenceKeys: evidenceUploads.slice(1).map(item => item.upload?.key).filter((key): key is string => Boolean(key)),
         frameKey: frame?.key,
         nameplateKey: nameplate?.key,
       });
-      setDiagnosis(result);
+      setDiagnosis(detectedErrorCode ? { ...result, error_code: result.error_code ?? detectedErrorCode } : result);
       setPipeline("results");
       window.setTimeout(() => document.getElementById("diagnosis")?.scrollIntoView({ behavior: "smooth", block: "start" }), 40);
     } catch (error) {

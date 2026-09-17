@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
-import { diagnosisJsonSchema, nameplateJsonSchema, normalizeDiagnosis, normalizeNameplate, safetyGate, type DiagnosisResult } from "@shared/fixpoint";
+import { diagnosisJsonSchema, errorCodeJsonSchema, nameplateJsonSchema, normalizeDiagnosis, normalizeNameplate, safetyGate, type DiagnosisResult } from "@shared/fixpoint";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { invokeLLM } from "./_core/llm";
 import { systemRouter } from "./_core/systemRouter";
@@ -15,6 +15,7 @@ const diagnosisInput = z.object({
   notes: z.string().max(1000).optional(),
   fileKey: z.string().min(1).max(500),
   fileMime: z.string().min(1).max(120),
+  evidenceKeys: z.array(z.string().min(1).max(500)).max(4).optional(),
   frameKey: z.string().min(1).max(500).optional(),
   nameplateKey: z.string().min(1).max(500).optional(),
 });
@@ -42,14 +43,18 @@ type DiagnosisImagePart =
   | { type: "file_url"; file_url: { url: string; mime_type: "video/mp4" } }
   | { type: "image_url"; image_url: { url: string; detail: "high" } };
 
-async function requestDiagnosis(input: z.infer<typeof diagnosisInput>, signedImageUrl: string, signedNameplateUrl?: string, includeVideo = true) {
+async function requestDiagnosis(input: z.infer<typeof diagnosisInput>, signedImageUrls: string[], signedNameplateUrl?: string, includeVideo = true) {
+  const primaryUrl = signedImageUrls[0];
   const imageParts: DiagnosisImagePart[] = input.fileMime.startsWith("video/")
     ? includeVideo
-      ? [{ type: "file_url" as const, file_url: { url: signedImageUrl, mime_type: "video/mp4" as const } }]
+      ? [{ type: "file_url" as const, file_url: { url: primaryUrl, mime_type: "video/mp4" as const } }]
       : input.frameKey
         ? [{ type: "image_url" as const, image_url: { url: input.frameKey, detail: "high" as const } }]
         : []
-    : [{ type: "image_url" as const, image_url: { url: signedImageUrl, detail: "high" as const } }];
+    : signedImageUrls.map(url => ({ type: "image_url" as const, image_url: { url, detail: "high" as const } }));
+  if (input.fileMime.startsWith("video/") && signedImageUrls.length > 1) {
+    imageParts.push(...signedImageUrls.slice(1).map(url => ({ type: "image_url" as const, image_url: { url, detail: "high" as const } })));
+  }
   if (input.frameKey && !(input.fileMime.startsWith("video/") && !includeVideo)) {
     imageParts.push({ type: "image_url" as const, image_url: { url: input.frameKey, detail: "high" as const } });
   }
@@ -60,7 +65,7 @@ async function requestDiagnosis(input: z.infer<typeof diagnosisInput>, signedIma
     messages: [
       {
         role: "system",
-              content: `You are Bernard, a careful device diagnostic assistant. Analyze the supplied evidence for any household appliance, personal electronic, entertainment device, or other consumer hardware and return only the requested JSON schema. Explain the likely problem in plain language for a non-technical person. Estimate repair cost in Indian rupees and set estimated_cost_range.currency to INR. Never invent a model-specific part number; use null when uncertain. Confidence is a calibrated estimate, not a promise. Any issue involving gas lines, refrigerant, sealed refrigeration systems, exposed mains voltage, swollen batteries, burning, smoke, or liquid near powered electronics MUST use safety_flag.level = red, explain the danger plainly, and return an empty repair_steps array. Do not provide DIY steps for those issues even if the user asks. For amber issues, include concise caution text on the affected steps.`,
+              content: `You are Bernard, a careful device diagnostic assistant. Analyze all supplied evidence images together for any household appliance, personal electronic, entertainment device, or other consumer hardware and return only the requested JSON schema. The images may show the full device, the problem area, a model label, or an error-code display. Explain the likely problem in plain language for a non-technical person. If a visible display shows an error code, populate error_code with the exact code and a short plain-language meaning; otherwise return error_code as null. Estimate repair cost in Indian rupees and set estimated_cost_range.currency to INR. Never invent a model-specific part number; use null when uncertain. Confidence is a calibrated estimate, not a promise. Any issue involving gas lines, refrigerant, sealed refrigeration systems, exposed mains voltage, swollen batteries, burning, smoke, or liquid near powered electronics MUST use safety_flag.level = red, explain the danger plainly, and return an empty repair_steps array. Do not provide DIY steps for those issues even if the user asks. For amber issues, include concise caution text on the affected steps.`,
       },
       {
         role: "user",
@@ -68,7 +73,7 @@ async function requestDiagnosis(input: z.infer<typeof diagnosisInput>, signedIma
           ...imageParts,
           {
             type: "text",
-            text: `Device type: ${input.applianceType}\nModel number: ${input.modelNumber || "Not provided"}\nUser notes: ${input.notes || "None"}\n\nReturn a ranked, useful diagnosis for this exact evidence.`,
+            text: `Device type: ${input.applianceType}\nModel number: ${input.modelNumber || "Not provided"}\nEvidence order: ${signedImageUrls.map((_, index) => `${index + 1}`).join(", ")}\nUser notes: ${input.notes || "None"}\n\nReturn a ranked, useful diagnosis for this exact evidence.`,
           },
         ],
       },
@@ -108,15 +113,15 @@ export const appRouter = router({
         return { ...diagnosis, id: row.id, applianceType: row.applianceType, modelNumber: row.modelNumber, notes: row.notes, completedSteps };
       }),
     diagnose: publicProcedure.input(diagnosisInput).mutation(async ({ input, ctx }) => {
-      const signedImageUrl = await storageGetSignedUrl(input.fileKey);
+      const signedImageUrls = await Promise.all([input.fileKey, ...(input.evidenceKeys ?? [])].slice(0, 4).map(key => storageGetSignedUrl(key)));
       const signedNameplateUrl = input.nameplateKey ? await storageGetSignedUrl(input.nameplateKey) : undefined;
       if (input.frameKey) input.frameKey = await storageGetSignedUrl(input.frameKey);
       let diagnosis: DiagnosisResult;
       try {
-        diagnosis = await requestDiagnosis(input, signedImageUrl, signedNameplateUrl);
+        diagnosis = await requestDiagnosis(input, signedImageUrls, signedNameplateUrl);
       } catch (firstError) {
         console.warn("[Bernard] Diagnosis retry after malformed or unavailable response", firstError);
-        diagnosis = await requestDiagnosis(input, signedImageUrl, signedNameplateUrl, false);
+        diagnosis = await requestDiagnosis(input, signedImageUrls, signedNameplateUrl, false);
       }
       const id = await createDiagnosis({
         userId: ctx.user?.id,
@@ -143,7 +148,7 @@ export const appRouter = router({
               role: "user",
               content: [
                 { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
-                { type: "text", text: "Extract the appliance type, brand, model number, serial number, and your confidence in the read." },
+                { type: "text", text: "Extract the device type, brand, model number, serial number, and your confidence in the read." },
               ],
             },
           ],
@@ -155,6 +160,24 @@ export const appRouter = router({
         const details = normalizeNameplate(parseStructuredJson<unknown>(raw));
         if (!details) throw new Error("The nameplate could not be read clearly.");
         return details;
+      }),
+    readErrorCode: publicProcedure
+      .input(z.object({ fileKey: z.string().min(1).max(500) }))
+      .mutation(async ({ input }) => {
+        const imageUrl = await storageGetSignedUrl(input.fileKey);
+        const response = await invokeLLM({
+          model: "claude-sonnet-4-6",
+          messages: [
+            { role: "system", content: "Read the device display in this image. Return only JSON. Find an exact visible error or fault code such as E15, F21, 4C, OE, 0x80070057, or a similar code. Do not guess from a blurry screen. If there is no clear code, return code and meaning as null." },
+            { role: "user", content: [{ type: "image_url", image_url: { url: imageUrl, detail: "high" } }, { type: "text", text: "Extract the exact code, explain it in one short sentence for a non-technical person, and give confidence from 0 to 100." }] },
+          ],
+          response_format: { type: "json_schema", json_schema: errorCodeJsonSchema },
+          maxTokens: 240,
+        });
+        const raw = readContent(response);
+        const value = parseStructuredJson<{ code: string | null; meaning: string | null; confidence: number }>(raw);
+        if (!value.code || !value.meaning) return null;
+        return { code: value.code.trim(), meaning: value.meaning.trim(), confidence: Math.max(0, Math.min(100, Math.round(value.confidence))) };
       }),
     updateProgress: publicProcedure
       .input(z.object({ diagnosisId: z.number().int().nonnegative(), sessionId: z.string().min(8).max(80), completedSteps: z.array(z.number().int().nonnegative()).max(50) }))

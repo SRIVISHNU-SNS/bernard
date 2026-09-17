@@ -24,6 +24,14 @@ export type RepairStep = {
   caution: string | null;
 };
 
+export type ErrorCodeResult = {
+  code: string;
+  meaning: string;
+  confidence: number;
+};
+
+export type EvidenceRole = "problem" | "device" | "label" | "error_code" | "other";
+
 export type DiagnosisResult = {
   probable_causes: ProbableCause[];
   safety_flag: SafetyFlag;
@@ -37,6 +45,7 @@ export type DiagnosisResult = {
   tools_needed: string[];
   parts_needed: PartNeeded[];
   repair_steps: RepairStep[];
+  error_code: ErrorCodeResult | null;
 };
 
 export type StoredDiagnosis = DiagnosisResult & {
@@ -155,6 +164,7 @@ export function normalizeDiagnosis(value: unknown): DiagnosisResult | null {
   const tools = Array.isArray(candidate.tools_needed) ? candidate.tools_needed : [];
   const parts = Array.isArray(candidate.parts_needed) ? candidate.parts_needed : [];
   const steps = Array.isArray(candidate.repair_steps) ? candidate.repair_steps : [];
+  const errorCode = candidate.error_code as Record<string, unknown> | null | undefined;
 
   if (!safety || !isSafetyLevel(safety.level) || typeof safety.reason !== "string") return null;
   if (!costs || typeof costs.low !== "number" || typeof costs.high !== "number" || typeof costs.currency !== "string") return null;
@@ -200,6 +210,9 @@ export function normalizeDiagnosis(value: unknown): DiagnosisResult | null {
         caution: typeof item.caution === "string" ? item.caution : null,
       }))
       .slice(0, 20),
+    error_code: errorCode && typeof errorCode.code === "string" && typeof errorCode.meaning === "string" && typeof errorCode.confidence === "number"
+      ? { code: errorCode.code, meaning: errorCode.meaning, confidence: Math.max(0, Math.min(100, Math.round(errorCode.confidence))) }
+      : null,
   };
 }
 
@@ -287,8 +300,18 @@ export const diagnosisJsonSchema = {
           required: ["title", "detail", "caution"],
         },
       },
+      error_code: {
+        type: ["object", "null"],
+        additionalProperties: false,
+        properties: {
+          code: { type: "string" },
+          meaning: { type: "string" },
+          confidence: { type: "number", minimum: 0, maximum: 100 },
+        },
+        required: ["code", "meaning", "confidence"],
+      },
     },
-    required: ["probable_causes", "safety_flag", "difficulty", "estimated_cost_range", "estimated_time_minutes", "tools_needed", "parts_needed", "repair_steps"],
+    required: ["probable_causes", "safety_flag", "difficulty", "estimated_cost_range", "estimated_time_minutes", "tools_needed", "parts_needed", "repair_steps", "error_code"],
   },
 } as const;
 
@@ -306,5 +329,20 @@ export const nameplateJsonSchema = {
       confidence: { type: "number", minimum: 0, maximum: 100 },
     },
     required: ["appliance_type", "brand", "model_number", "serial_number", "confidence"],
+  },
+} as const;
+
+export const errorCodeJsonSchema = {
+  name: "bernard_error_code",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      code: { type: ["string", "null"] },
+      meaning: { type: ["string", "null"] },
+      confidence: { type: "number", minimum: 0, maximum: 100 },
+    },
+    required: ["code", "meaning", "confidence"],
   },
 } as const;
