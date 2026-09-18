@@ -33,6 +33,7 @@ export type ErrorCodeResult = {
 export type EvidenceRole = "problem" | "device" | "label" | "error_code" | "other";
 
 export type DiagnosisResult = {
+  detected_device_type?: string;
   probable_causes: ProbableCause[];
   safety_flag: SafetyFlag;
   difficulty: Difficulty;
@@ -171,6 +172,7 @@ export function normalizeDiagnosis(value: unknown): DiagnosisResult | null {
   if (typeof candidate.difficulty !== "string" || typeof candidate.estimated_time_minutes !== "number") return null;
 
   return {
+    detected_device_type: typeof candidate.detected_device_type === "string" ? candidate.detected_device_type : "Other device",
     probable_causes: causes
       .filter(item => item && typeof item === "object")
       .map(item => item as Record<string, unknown>)
@@ -239,6 +241,7 @@ export const diagnosisJsonSchema = {
     type: "object",
     additionalProperties: false,
     properties: {
+      detected_device_type: { type: "string" },
       probable_causes: {
         type: "array",
         items: {
@@ -311,7 +314,7 @@ export const diagnosisJsonSchema = {
         required: ["code", "meaning", "confidence"],
       },
     },
-    required: ["probable_causes", "safety_flag", "difficulty", "estimated_cost_range", "estimated_time_minutes", "tools_needed", "parts_needed", "repair_steps", "error_code"],
+    required: ["detected_device_type", "probable_causes", "safety_flag", "difficulty", "estimated_cost_range", "estimated_time_minutes", "tools_needed", "parts_needed", "repair_steps", "error_code"],
   },
 } as const;
 

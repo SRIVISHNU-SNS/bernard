@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
-import { diagnosisJsonSchema, errorCodeJsonSchema, nameplateJsonSchema, normalizeDiagnosis, normalizeNameplate, safetyGate, type DiagnosisResult } from "@shared/fixpoint";
+import { diagnosisJsonSchema, errorCodeJsonSchema, matchApplianceType, nameplateJsonSchema, normalizeDiagnosis, normalizeNameplate, safetyGate, type DiagnosisResult } from "@shared/fixpoint";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { invokeLLM } from "./_core/llm";
 import { systemRouter } from "./_core/systemRouter";
@@ -10,7 +10,7 @@ import { storageGetSignedUrl } from "./storage";
 
 const diagnosisInput = z.object({
   sessionId: z.string().min(8).max(80),
-  applianceType: z.string().min(2).max(120),
+  applianceType: z.string().min(2).max(120).default("Auto-detect"),
   modelNumber: z.string().max(160).optional(),
   notes: z.string().max(1000).optional(),
   fileKey: z.string().min(1).max(500),
@@ -65,7 +65,7 @@ async function requestDiagnosis(input: z.infer<typeof diagnosisInput>, signedIma
     messages: [
       {
         role: "system",
-              content: `You are Bernard, a careful device diagnostic assistant. Analyze all supplied evidence images together for any household appliance, personal electronic, entertainment device, or other consumer hardware and return only the requested JSON schema. The images may show the full device, the problem area, a model label, or an error-code display. Explain the likely problem in plain language for a non-technical person. If a visible display shows an error code, populate error_code with the exact code and a short plain-language meaning; otherwise return error_code as null. Estimate repair cost in Indian rupees and set estimated_cost_range.currency to INR. Never invent a model-specific part number; use null when uncertain. Confidence is a calibrated estimate, not a promise. Any issue involving gas lines, refrigerant, sealed refrigeration systems, exposed mains voltage, swollen batteries, burning, smoke, or liquid near powered electronics MUST use safety_flag.level = red, explain the danger plainly, and return an empty repair_steps array. Do not provide DIY steps for those issues even if the user asks. For amber issues, include concise caution text on the affected steps.`,
+              content: `You are Bernard, a careful device diagnostic assistant. Analyze all supplied evidence images together for any household appliance, personal electronic, entertainment device, or other consumer hardware and return only the requested JSON schema. Automatically identify the device category from the evidence; never ask the user to choose it. Return detected_device_type as one concise category such as Refrigerator, Washing machine, Dishwasher, Dryer, Oven / range, Microwave, Water heater, Air conditioner, Coffee maker, Television, Laptop, Phone, Headphones, Tablet, Camera, Game console, Vacuum, or Other device. The images may show the full device, the problem area, a model label, or an error-code display. Explain the likely problem in plain language for a non-technical person. If a visible display shows an error code, populate error_code with the exact code and a short plain-language meaning; otherwise return error_code as null. Estimate repair cost in Indian rupees and set estimated_cost_range.currency to INR. Never invent a model-specific part number; use null when uncertain. Confidence is a calibrated estimate, not a promise. Any issue involving gas lines, refrigerant, sealed refrigeration systems, exposed mains voltage, swollen batteries, burning, smoke, or liquid near powered electronics MUST use safety_flag.level = red, explain the danger plainly, and return an empty repair_steps array. Do not provide DIY steps for those issues even if the user asks. For amber issues, include concise caution text on the affected steps.`,
       },
       {
         role: "user",
@@ -73,7 +73,7 @@ async function requestDiagnosis(input: z.infer<typeof diagnosisInput>, signedIma
           ...imageParts,
           {
             type: "text",
-            text: `Device type: ${input.applianceType}\nModel number: ${input.modelNumber || "Not provided"}\nEvidence order: ${signedImageUrls.map((_, index) => `${index + 1}`).join(", ")}\nUser notes: ${input.notes || "None"}\n\nReturn a ranked, useful diagnosis for this exact evidence.`,
+            text: `Device type hint: automatic detection required\nModel number: ${input.modelNumber || "Not provided"}\nEvidence order: ${signedImageUrls.map((_, index) => `${index + 1}`).join(", ")}\nUser notes: ${input.notes || "None"}\n\nReturn a ranked, useful diagnosis for this exact evidence.`,
           },
         ],
       },
@@ -123,15 +123,16 @@ export const appRouter = router({
         console.warn("[Bernard] Diagnosis retry after malformed or unavailable response", firstError);
         diagnosis = await requestDiagnosis(input, signedImageUrls, signedNameplateUrl, false);
       }
+      const detectedType = matchApplianceType(diagnosis.detected_device_type) ?? "Other device";
       const id = await createDiagnosis({
         userId: ctx.user?.id,
         sessionId: input.sessionId,
-        applianceType: input.applianceType,
+        applianceType: detectedType,
         modelNumber: input.modelNumber,
         notes: input.notes,
         diagnosisJson: JSON.stringify(diagnosis),
       });
-      return { ...diagnosis, id, applianceType: input.applianceType, modelNumber: input.modelNumber ?? null, notes: input.notes ?? null, completedSteps: [] };
+      return { ...diagnosis, id, applianceType: detectedType, modelNumber: input.modelNumber ?? null, notes: input.notes ?? null, completedSteps: [] };
     }),
     ocrNameplate: publicProcedure
       .input(z.object({ fileKey: z.string().min(1).max(500) }))
