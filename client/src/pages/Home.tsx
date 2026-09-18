@@ -3,6 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { startLogin } from "@/const";
+import { jsPDF } from "jspdf";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -10,6 +11,7 @@ import {
   Check,
   ChevronDown,
   CircleHelp,
+  Download,
   FileImage,
   FileVideo,
   LockKeyhole,
@@ -373,6 +375,47 @@ function ErrorCodeCard({ code }: { code: NonNullable<StoredDiagnosis["error_code
   return <div className="mobile-card mt-5 border border-[#BCD0FF] bg-[#F3F6FF] p-4 sm:p-5"><div className="flex items-start gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white font-mono-data font-semibold text-[var(--signal)]">!</div><div><div className="font-display text-[13px] font-semibold text-[var(--signal)]">ERROR CODE FOUND</div><div className="mt-1 font-mono-data text-[22px] font-semibold tracking-[-.02em]">{code.code}</div><p className="mt-1 text-[15px] leading-6 text-[var(--muted)]">{code.meaning}</p></div></div></div>;
 }
 
+function exportDiagnosisPdf(diagnosis: StoredDiagnosis) {
+  const pdf = new jsPDF({ unit: "mm", format: "a4" });
+  const margin = 18;
+  const width = 210 - margin * 2;
+  let y = 22;
+  const ink = [20, 23, 26] as const;
+  const muted = [91, 100, 112] as const;
+  const blue = [43, 95, 240] as const;
+  const addText = (text: string, size: number, color: readonly [number, number, number] = ink, bold = false, gap = 6) => {
+    pdf.setFont("helvetica", bold ? "bold" : "normal");
+    pdf.setFontSize(size);
+    pdf.setTextColor(...color);
+    const lines = pdf.splitTextToSize(text, width);
+    if (y + lines.length * (size * .45) > 278) { pdf.addPage(); y = 20; }
+    pdf.text(lines, margin, y);
+    y += lines.length * (size * .45) + gap;
+  };
+  addText("bernard", 22, ink, true, 3);
+  addText("DEVICE DIAGNOSIS REPORT", 9, blue, true, 12);
+  addText(`${diagnosis.applianceType}${diagnosis.modelNumber ? ` · ${diagnosis.modelNumber}` : ""}`, 15, ink, true, 4);
+  addText(`Generated ${new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}`, 9, muted, false, 12);
+  addText(`Safety: ${safetyLabel(diagnosis.safety_flag.level)}`, 13, diagnosis.safety_flag.level === "red" ? [209, 67, 67] : diagnosis.safety_flag.level === "amber" ? [142, 97, 16] : [30, 142, 90], true, 3);
+  addText(diagnosis.safety_flag.reason, 10, muted, false, 10);
+  addText("Most likely problem", 12, ink, true, 3);
+  const cause = diagnosis.probable_causes[0];
+  addText(cause ? `${cause.cause} (${cause.confidence}% likely)\n${cause.explanation}` : "Bernard needs a clearer photo of the problem area.", 10, muted, false, 9);
+  addText("At a glance", 12, ink, true, 3);
+  addText(`Repair difficulty: ${difficultyCopy(diagnosis.difficulty).label}\nEstimated cost in India: ${formatInrRange(diagnosis.estimated_cost_range)}\nTime needed: ${formatDuration(diagnosis.estimated_time_minutes)}`, 10, muted, false, 9);
+  if (diagnosis.error_code) {
+    addText(`Error code: ${diagnosis.error_code.code}\n${diagnosis.error_code.meaning}`, 10, blue, false, 9);
+  }
+  if (diagnosis.repair_steps.length) {
+    addText("What to do next", 12, ink, true, 4);
+    diagnosis.repair_steps.forEach((step, index) => addText(`${index + 1}. ${step.title}\n${step.detail}${step.caution ? `\nCaution: ${step.caution}` : ""}`, 10, muted, false, 7));
+  }
+  pdf.setFontSize(8);
+  pdf.setTextColor(...muted);
+  pdf.text("Bernard provides guidance, not a guarantee. Stop and contact a qualified professional if the safety verdict says Professional only.", margin, 287, { maxWidth: width });
+  pdf.save(`bernard-diagnosis-${new Date().toISOString().slice(0, 10)}.pdf`);
+}
+
 function Results({ diagnosis, onReset, onLogin }: { diagnosis: StoredDiagnosis; onReset: () => void; onLogin: () => void }) {
   const [whyOpen, setWhyOpen] = useState(false);
   const [completedSteps, setCompletedSteps] = useState<number[]>(diagnosis.completedSteps || []);
@@ -385,7 +428,7 @@ function Results({ diagnosis, onReset, onLogin }: { diagnosis: StoredDiagnosis; 
     updateProgress.mutate({ diagnosisId: diagnosis.id, sessionId: getSessionId(), completedSteps: next });
   };
   return <>
-    <section id="diagnosis" className="diagnosis-success scroll-mt-8"><div className="mb-4 flex items-center gap-3 text-[var(--safe)]" role="status" aria-live="polite"><span className="relative flex h-7 w-7 items-center justify-center"><span className="success-ring absolute inset-0 rounded-full bg-[#B7E5D0]" /><span className="success-pop relative flex h-7 w-7 items-center justify-center rounded-full bg-[var(--safe)] text-white"><Check size={15} strokeWidth={2.5} /></span></span><span className="font-display text-[13px] font-semibold">Diagnosis ready</span></div><SectionHeading eyebrow="02 · RESULT" title="Here’s the likely problem"><div className="flex gap-2 no-print"><Button variant="outline" size="sm" className="rounded-none border-[var(--border)] bg-white font-display text-[13px]" onClick={onReset}><RotateCcw size={14} /> New photo</Button><Button variant="outline" size="sm" className="rounded-none border-[var(--border)] bg-white font-display text-[13px]" onClick={() => window.print()}><Printer size={14} /> Print</Button></div></SectionHeading><SafetyPanel diagnosis={diagnosis} />{diagnosis.error_code && <ErrorCodeCard code={diagnosis.error_code} />}
+    <section id="diagnosis" className="diagnosis-success scroll-mt-8"><div className="mb-4 flex items-center gap-3 text-[var(--safe)]" role="status" aria-live="polite"><span className="relative flex h-7 w-7 items-center justify-center"><span className="success-ring absolute inset-0 rounded-full bg-[#B7E5D0]" /><span className="success-pop relative flex h-7 w-7 items-center justify-center rounded-full bg-[var(--safe)] text-white"><Check size={15} strokeWidth={2.5} /></span></span><span className="font-display text-[13px] font-semibold">Diagnosis ready</span></div><SectionHeading eyebrow="02 · RESULT" title="Here’s the likely problem"><div className="flex flex-wrap gap-2 no-print"><Button variant="outline" size="sm" className="tap-target rounded-none border-[var(--border)] bg-white font-display text-[13px]" onClick={() => exportDiagnosisPdf(diagnosis)}><Download size={14} /> Export PDF</Button><Button variant="outline" size="sm" className="tap-target rounded-none border-[var(--border)] bg-white font-display text-[13px]" onClick={onReset}><RotateCcw size={14} /> New photo</Button><Button variant="outline" size="sm" className="tap-target rounded-none border-[var(--border)] bg-white font-display text-[13px]" onClick={() => window.print()}><Printer size={14} /> Print</Button></div></SectionHeading><SafetyPanel diagnosis={diagnosis} />{diagnosis.error_code && <ErrorCodeCard code={diagnosis.error_code} />}
       <div className="mt-6 grid gap-5 md:grid-cols-[1fr_220px]">
         <div className="border border-[var(--border)] bg-white p-5"><div className="mb-4 flex items-center justify-between"><div className="font-display text-[14px] font-semibold">Most likely cause</div><span className="font-mono-data text-[12px] text-[var(--muted)]">{diagnosis.probable_causes[0]?.confidence ?? 0}% likely</span></div>{diagnosis.probable_causes.length ? <div className="space-y-5">{diagnosis.probable_causes.slice(0, 3).map((cause, index) => <div key={`${cause.cause}-${index}`}><div className="flex items-start gap-4"><div className="font-mono-data text-[12px] text-[var(--muted)]">{index === 0 ? "01" : "—"}</div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-baseline justify-between gap-2"><div className={`font-display font-semibold ${index === 0 ? "text-[20px]" : "text-[15px] text-[var(--muted)]"}`}>{cause.cause}</div>{index === 0 && <div className="font-mono-data text-[13px] font-medium text-[var(--signal)]">{cause.confidence}%</div>}</div>{index === 0 && <><div className="mt-2 h-1 bg-[var(--surface-alt)]"><div className="h-1 bg-[var(--signal)]" style={{ width: `${cause.confidence}%` }} /></div><p className="mt-2 text-[15px] leading-6 text-[var(--muted)]">{cause.explanation}</p></>}</div></div></div>)}</div> : <div className="text-[15px] text-[var(--muted)]">We need a closer photo of the problem area.</div>}<button type="button" className="mt-5 flex w-full items-center justify-between border-t border-[var(--border)] pt-4 text-left font-display text-[13px] font-semibold" onClick={() => setWhyOpen(!whyOpen)}><span className="flex items-center gap-2"><CircleHelp size={15} className="text-[var(--signal)]" /> Why we think this</span><ChevronDown size={16} className={`transition-transform ${whyOpen ? "rotate-180" : ""}`} /></button>{whyOpen && <div className="mt-3 bg-[var(--surface-alt)] p-3 text-[14px] leading-6 text-[var(--muted)]">We compare what is visible in your photo with common appliance failure patterns. The percentage is a confidence estimate, not a guarantee.</div>}</div>
         <div className="mobile-card border border-[var(--border)] bg-[var(--surface-alt)] p-5"><img src={applianceIllustrations[diagnosis.applianceType] ?? applianceIllustrations["Other device"]} alt={`${diagnosis.applianceType} illustration`} className="mx-auto mb-4 h-32 w-32 object-contain" /><div className="font-display text-[13px] font-semibold text-[var(--muted)]">AT A GLANCE</div><div className="mt-4 space-y-4"><div><div className="text-[13px] text-[var(--muted)]">Repair difficulty</div><div className="mt-1"><StatusChip tone={difficultyCopy(diagnosis.difficulty).tone}>{difficultyCopy(diagnosis.difficulty).label}</StatusChip></div><div className="mt-1 text-[13px] text-[var(--muted)]">{difficultyCopy(diagnosis.difficulty).detail}</div></div><div><div className="text-[13px] text-[var(--muted)]">Likely cost in India</div><div className="mt-1 font-display text-[18px] font-semibold">{formatInrRange(diagnosis.estimated_cost_range)}</div></div><div><div className="text-[13px] text-[var(--muted)]">Time needed</div><div className="mt-1 font-mono-data text-[16px]">{formatDuration(diagnosis.estimated_time_minutes)}</div></div></div></div>
