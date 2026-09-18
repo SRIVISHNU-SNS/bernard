@@ -471,20 +471,14 @@ export default function Home() {
       const evidenceUploads = await Promise.all(payload.evidence.map(async item => ({ ...item, upload: await uploadFile(item.file, `evidence-${item.role}-${item.file.name}`) })));
       const primary = evidenceUploads[0]?.upload ?? await uploadFile(payload.file);
       const errorCodePhoto = evidenceUploads.find(item => item.role === "error_code");
-      let detectedErrorCode: ErrorCodeResult | null = null;
-      if (errorCodePhoto?.upload) {
-        try {
-          detectedErrorCode = await errorCodeMutation.mutateAsync({ fileKey: errorCodePhoto.upload.key });
-        } catch {
-          detectedErrorCode = null;
-        }
-      }
-      const nameplate = payload.nameplate ? await uploadFile(payload.nameplate, `nameplate-${payload.nameplate.name}`) : null;
-      let frame: UploadRef | null = null;
-      if (payload.file.type.startsWith("video/")) {
-        const frameBlob = await extractVideoFrame(payload.file);
-        frame = await uploadFile(new File([frameBlob], "representative-frame.jpg", { type: "image/jpeg" }));
-      }
+      const errorCodePromise = errorCodePhoto?.upload
+        ? errorCodeMutation.mutateAsync({ fileKey: errorCodePhoto.upload.key }).catch(() => null)
+        : Promise.resolve(null);
+      const nameplatePromise = payload.nameplate ? uploadFile(payload.nameplate, `nameplate-${payload.nameplate.name}`) : Promise.resolve(null);
+      const framePromise = payload.file.type.startsWith("video/")
+        ? extractVideoFrame(payload.file).then(frameBlob => uploadFile(new File([frameBlob], "representative-frame.jpg", { type: "image/jpeg" })))
+        : Promise.resolve(null);
+      const [nameplate, frame] = await Promise.all([nameplatePromise, framePromise]);
       const result = await diagnosisMutation.mutateAsync({
         sessionId,
         applianceType: payload.applianceType,
@@ -496,9 +490,12 @@ export default function Home() {
         frameKey: frame?.key,
         nameplateKey: nameplate?.key,
       });
-      setDiagnosis(detectedErrorCode ? { ...result, error_code: result.error_code ?? detectedErrorCode } : result);
+      setDiagnosis(result);
       setPipeline("results");
       window.setTimeout(() => document.getElementById("diagnosis")?.scrollIntoView({ behavior: "smooth", block: "start" }), 40);
+      void errorCodePromise.then(detectedErrorCode => {
+        if (detectedErrorCode && !result.error_code) setDiagnosis(current => current ? { ...current, error_code: detectedErrorCode } : current);
+      });
     } catch (error) {
       setPipeline("idle");
       setUploadError(error instanceof Error ? error.message : "We couldn't get a clear enough read. Try a closer shot of the problem itself.");
