@@ -185,6 +185,7 @@ function UploadPanel({ onAnalyze }: { onAnalyze: (payload: { file: File; evidenc
   const [serialNumber, setSerialNumber] = useState("");
   const ocrMutation = trpc.diagnosis.ocrNameplate.useMutation();
   const inputRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
   const evidenceRef = useRef<HTMLInputElement>(null);
   const nameplateRef = useRef<HTMLInputElement>(null);
 
@@ -263,6 +264,7 @@ function UploadPanel({ onAnalyze }: { onAnalyze: (payload: { file: File; evidenc
         onDrop={event => { event.preventDefault(); setDragActive(false); void pickFile(event.dataTransfer.files?.[0] ?? null); }}
       >
         <input ref={inputRef} type="file" accept="image/*,video/*" capture="environment" className="hidden" onChange={event => void pickFile(event.target.files?.[0] ?? null)} />
+        <input ref={galleryRef} type="file" accept="image/*,video/*" className="hidden" onChange={event => void pickFile(event.target.files?.[0] ?? null)} />
         <div className="mb-5 flex h-14 w-14 items-center justify-center border border-[#B8C0C9] bg-white text-[var(--signal)]">
           {file?.type.startsWith("video/") ? <FileVideo size={26} strokeWidth={1.7} /> : <UploadCloud size={27} strokeWidth={1.7} />}
         </div>
@@ -277,13 +279,15 @@ function UploadPanel({ onAnalyze }: { onAnalyze: (payload: { file: File; evidenc
           </>
         ) : (
           <>
-            <div className="font-display text-[20px] font-semibold">Drop a photo or short video here</div>
-            <div className="mt-2 max-w-[360px] text-[15px] leading-6 text-[var(--muted)]">Show the problem clearly. A close-up of the leak, noise source, or damaged area helps most.</div>
-            <div className="mt-5 flex flex-wrap justify-center gap-2 text-[13px] text-[var(--muted)]"><StatusChip><FileImage size={14} />Photo · 10 MB</StatusChip><StatusChip><FileVideo size={14} />Video · 30 sec</StatusChip></div>
+            <div className="font-display text-[20px] font-semibold">What needs fixing?</div>
+            <div className="mt-2 max-w-[360px] text-[15px] leading-6 text-[var(--muted)]">Show Bernard the problem. A clear close-up helps most.</div>
+            <div className="mt-5 flex flex-wrap justify-center gap-3"><button type="button" className="tap-target inline-flex min-h-12 items-center gap-2 bg-[var(--signal)] px-5 font-display text-[14px] font-semibold text-white" onClick={event => { event.stopPropagation(); inputRef.current?.click(); }}><UploadCloud size={17} /> Take a photo</button><button type="button" className="tap-target inline-flex min-h-12 items-center gap-2 border border-[var(--border)] bg-white px-5 font-display text-[14px] font-semibold text-[var(--ink)]" onClick={event => { event.stopPropagation(); galleryRef.current?.click(); }}><FileImage size={17} /> Choose from gallery</button></div>
+            <div className="mt-4 flex flex-wrap justify-center gap-2 text-[13px] text-[var(--muted)]"><StatusChip><FileImage size={14} />Photo · 10 MB</StatusChip><StatusChip><FileVideo size={14} />Video · 30 sec</StatusChip></div>
           </>
         )}
       </div>
 
+      {file && <>
       <div className="mt-4 mobile-card border border-[var(--border)] bg-white p-4">
         <div className="flex items-center justify-between gap-3"><div><div className="font-display text-[14px] font-semibold">Add more photos</div><div className="mt-1 text-[14px] text-[var(--muted)]">Show the device, problem, label, or error screen.</div></div><button type="button" disabled={evidence.length >= 4} className="min-h-11 border border-[var(--border)] px-3 font-display text-[13px] font-semibold text-[var(--signal)] disabled:opacity-40" onClick={() => evidenceRef.current?.click()}><Plus size={15} className="mr-1 inline" /> Add</button><input ref={evidenceRef} type="file" accept="image/*" multiple className="hidden" onChange={event => addEvidence(event.target.files)} /></div>
         {evidence.length > 0 && <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">{evidence.map(item => <div key={`${item.file.name}-${item.file.lastModified}`} className="relative overflow-hidden rounded-md border border-[var(--border)] bg-[var(--surface-alt)]"><img src={URL.createObjectURL(item.file)} alt="Evidence preview" loading="lazy" decoding="async" className="aspect-square w-full object-cover" /><button type="button" onClick={() => removeEvidence(item.file)} className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-[var(--ink)]" aria-label={`Remove ${item.file.name}`}><X size={14} /></button><select value={item.role} onChange={event => setEvidence(current => current.map(entry => entry.file === item.file ? { ...entry, role: event.target.value as EvidenceRole } : entry))} className="absolute bottom-1 left-1 right-1 h-7 rounded border-0 bg-white/90 px-1 text-[11px] font-display"><option value="problem">Problem</option><option value="device">Device</option><option value="label">Label</option><option value="error_code">Error code</option><option value="other">Other</option></select></div>)}</div>}
@@ -315,10 +319,11 @@ function UploadPanel({ onAnalyze }: { onAnalyze: (payload: { file: File; evidenc
         </label>
       </div>
       {error && <div role="alert" className="mt-4 flex items-start gap-2 border-l-2 border-[var(--danger)] bg-[#FFF4F4] px-3 py-2 text-[14px] leading-5 text-[#8F2D2D]"><AlertTriangle size={17} className="mt-0.5 shrink-0" />{error}</div>}
-      <div className={`${file ? "mobile-sticky-action" : ""} mt-5 flex flex-col items-start gap-3 sm:flex-row sm:items-center`}>
+      </>}
+      {file && <div className="mobile-sticky-action mt-5 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
         <Button type="button" disabled={!file} className="tap-target h-12 rounded-none bg-[var(--signal)] px-6 font-display text-[14px] font-semibold text-white hover:bg-[#1D4DD8]" onClick={() => file && onAnalyze({ file, evidence, nameplate, applianceType: "Auto-detect", modelNumber, notes })}>Analyze {evidence.length > 1 ? `${evidence.length} photos` : "this device"} <ArrowRight size={17} /></Button>
         <div className="flex items-center gap-2 text-[13px] text-[var(--muted)]"><LockKeyhole size={14} /> Photos are processed for this diagnosis, then not shown publicly.</div>
-      </div>
+      </div>}
     </div>
   );
 }
@@ -328,15 +333,15 @@ function MiniExample({ label, result, tone }: { label: string; result: string; t
 }
 
 function AnalyzeState({ currentStage }: { currentStage: number }) {
-  const items = ["Reading the image and visible symptoms", "Matching against known failure patterns", "Checking the repair path for safety"]; 
-  return <div className="surface-enter border border-[var(--border)] bg-[var(--surface-alt)] p-6 sm:p-8"><div className="flex items-center gap-3"><Loader2 className="animate-spin text-[var(--signal)]" size={20} /><div className="font-display text-[17px] font-semibold">Building your diagnostic report</div><span className="ml-auto flex gap-1" aria-label="Processing"><i className="processing-dot h-1.5 w-1.5 rounded-full bg-[var(--signal)]" /><i className="processing-dot h-1.5 w-1.5 rounded-full bg-[var(--signal)]" /><i className="processing-dot h-1.5 w-1.5 rounded-full bg-[var(--signal)]" /></span></div><div className="mt-6 space-y-4">{items.map((item, index) => <div key={item} className="flex items-center gap-3 text-[15px] text-[var(--muted)]"><span className={`flex h-6 w-6 items-center justify-center rounded-full border text-[12px] font-display ${index < currentStage ? "border-[var(--signal)] bg-[var(--signal)] text-white" : "border-[#C7CDD4] bg-white"}`}>{index < currentStage ? <Check size={14} /> : index + 1}</span>{item}{index === currentStage && <span className="ml-auto font-mono-data text-[11px] text-[var(--signal)]">IN PROGRESS</span>}</div>)}</div><div className="mt-8 h-1 w-full overflow-hidden bg-white"><div className="processing-sweep h-full w-1/2 bg-[var(--signal)]" /></div><div className="mt-3 text-[13px] text-[var(--muted)]">Reading your evidence and checking the safest next step.</div></div>;
+  const items = ["Reading your photo", "Identifying the device and likely issue", "Checking the safest next step"]; 
+  return <div className="surface-enter border border-[var(--border)] bg-[var(--surface-alt)] p-6 sm:p-8"><div className="flex items-center gap-3"><Loader2 className="animate-spin text-[var(--signal)]" size={20} /><div className="font-display text-[17px] font-semibold">A clear answer is on the way</div><span className="ml-auto flex gap-1" aria-label="Processing"><i className="processing-dot h-1.5 w-1.5 rounded-full bg-[var(--signal)]" /><i className="processing-dot h-1.5 w-1.5 rounded-full bg-[var(--signal)]" /><i className="processing-dot h-1.5 w-1.5 rounded-full bg-[var(--signal)]" /></span></div><div className="mt-6 space-y-4">{items.map((item, index) => <div key={item} className="flex items-center gap-3 text-[15px] text-[var(--muted)]"><span className={`flex h-6 w-6 items-center justify-center rounded-full border text-[12px] font-display ${index < currentStage ? "border-[var(--signal)] bg-[var(--signal)] text-white" : "border-[#C7CDD4] bg-white"}`}>{index < currentStage ? <Check size={14} /> : index + 1}</span>{item}{index === currentStage && <span className="ml-auto font-mono-data text-[11px] text-[var(--signal)]">IN PROGRESS</span>}</div>)}</div><div className="mt-8 h-1 w-full overflow-hidden bg-white"><div className="processing-sweep h-full w-1/2 bg-[var(--signal)]" /></div><div className="mt-3 text-[13px] text-[var(--muted)]">No guesswork is shown until Bernard has checked the evidence.</div></div>;
 }
 
 function SafetyPanel({ diagnosis }: { diagnosis: StoredDiagnosis }) {
   const level = diagnosis.safety_flag.level;
   const tone = level === "green" ? "safe" : level === "amber" ? "caution" : "danger";
   const Icon = level === "green" ? ShieldCheck : AlertTriangle;
-  return <div className={`mobile-card resolve-panel border-l-4 p-5 ${level === "green" ? "border-[var(--safe)] bg-[#F1FBF6]" : level === "amber" ? "border-[var(--caution)] bg-[#FFF9EA]" : "border-[var(--danger)] bg-[#FFF4F4]"}`}><div className="flex items-start gap-4"><Icon size={25} className={level === "green" ? "text-[var(--safe)]" : level === "amber" ? "text-[#8E6110]" : "text-[var(--danger)]"} /><div className="min-w-0"><div className={`font-display text-[13px] font-semibold ${tone === "safe" ? "text-[var(--safe)]" : tone === "caution" ? "text-[#8E6110]" : "text-[var(--danger)]"}`}>SAFETY VERDICT</div><div className="mt-1 font-display text-[20px] font-semibold tracking-[-.02em]">{safetyLabel(level)}</div><p className="mt-2 max-w-[580px] text-[16px] leading-6">{diagnosis.safety_flag.reason}</p></div></div>{level === "red" && <div className="mt-5 flex flex-col gap-3 border-t border-[#E8BABA] pt-4 sm:flex-row sm:items-center sm:justify-between"><div className="text-[14px] text-[#8F2D2D]">Do not remove panels or test live components.</div><a href="https://www.google.com/search?q=appliance+repair+professional" target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 border border-[var(--danger)] px-4 py-2 font-display text-[13px] font-semibold text-[var(--danger)] hover:bg-white">Find a professional <ArrowRight size={15} /></a></div>}</div>;
+  return <div className={`mobile-card resolve-panel border-l-4 p-5 ${level === "green" ? "border-[var(--safe)] bg-[#F1FBF6]" : level === "amber" ? "border-[var(--caution)] bg-[#FFF9EA]" : "border-[var(--danger)] bg-[#FFF4F4]"}`}><div className="flex items-start gap-4"><Icon size={25} className={level === "green" ? "text-[var(--safe)]" : level === "amber" ? "text-[#8E6110]" : "text-[var(--danger)]"} /><div className="min-w-0"><div className={`font-display text-[13px] font-semibold ${tone === "safe" ? "text-[var(--safe)]" : tone === "caution" ? "text-[#8E6110]" : "text-[var(--danger)]"}`}>SAFETY CHECK</div><div className="mt-1 font-display text-[20px] font-semibold tracking-[-.02em]">{safetyLabel(level)}</div><p className="mt-2 max-w-[580px] text-[16px] leading-6">{diagnosis.safety_flag.reason}</p></div></div>{level === "red" && <div className="mt-5 flex flex-col gap-3 border-t border-[#E8BABA] pt-4 sm:flex-row sm:items-center sm:justify-between"><div className="text-[14px] text-[#8F2D2D]">Do not remove panels or test live components.</div><a href="https://www.google.com/search?q=appliance+repair+professional" target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 border border-[var(--danger)] px-4 py-2 font-display text-[13px] font-semibold text-[var(--danger)] hover:bg-white">Find a professional <ArrowRight size={15} /></a></div>}</div>;
 }
 
 const applianceIllustrations: Record<string, string> = {

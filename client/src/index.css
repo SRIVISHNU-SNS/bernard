@@ -39,6 +39,8 @@
   --safe: #1E8E5A;
   --caution: #C98A1A;
   --danger: #D14343;
+  --shadow-soft: 0 8px 28px rgba(20, 23, 26, .06);
+  --radius-card: 12px;
 }
 
 * { box-sizing: border-box; }
@@ -150,7 +152,7 @@ a:hover .brand-mark { transform: rotate(-4deg) scale(1.04); background: var(--si
     backdrop-filter: blur(14px);
   }
   .mobile-sticky-action button { width: 100%; min-height: 52px; }
-  .mobile-card { border-radius: 12px !important; }
+  .mobile-card { border-radius: var(--radius-card) !important; box-shadow: var(--shadow-soft); }
   .mobile-retake { display: inline-flex; }
   input, select, textarea { min-height: 48px; }
 }
