@@ -110,6 +110,7 @@ a:hover .brand-mark { transform: rotate(-4deg) scale(1.04); background: var(--si
 .tap-target { transition: transform 160ms cubic-bezier(.23,1,.32,1), box-shadow 160ms ease, background-color 160ms ease; }
 .tap-target:hover { box-shadow: 0 4px 14px rgba(20, 23, 26, .08); }
 .tap-target:active { transform: scale(.97); }
+.mobile-retake { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
@@ -150,6 +151,7 @@ a:hover .brand-mark { transform: rotate(-4deg) scale(1.04); background: var(--si
   }
   .mobile-sticky-action button { width: 100%; min-height: 52px; }
   .mobile-card { border-radius: 12px !important; }
+  .mobile-retake { display: inline-flex; }
   input, select, textarea { min-height: 48px; }
 }
 

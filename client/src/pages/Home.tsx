@@ -270,7 +270,10 @@ function UploadPanel({ onAnalyze }: { onAnalyze: (payload: { file: File; evidenc
           <>
             <div className="font-display text-[17px] font-semibold">{file.name}</div>
             <div className="mt-1 text-[15px] text-[var(--muted)]">{file.type.startsWith("video/") ? "Video ready · under 30 seconds" : "Photo ready for analysis"}</div>
-            <button type="button" className="mt-4 font-display text-[13px] font-semibold text-[var(--signal)] underline underline-offset-4" onClick={event => { event.stopPropagation(); setFile(null); }}>Choose a different file</button>
+            <div className="mt-4 flex flex-wrap justify-center gap-4">
+              <button type="button" className="font-display text-[13px] font-semibold text-[var(--signal)] underline underline-offset-4" onClick={event => { event.stopPropagation(); setFile(null); }}>Choose a different file</button>
+              <button type="button" className="mobile-retake tap-target inline-flex items-center gap-1.5 font-display text-[13px] font-semibold text-[var(--signal)] underline underline-offset-4" onClick={event => { event.stopPropagation(); if (inputRef.current) inputRef.current.value = ""; inputRef.current?.click(); }}>Retake photo</button>
+            </div>
           </>
         ) : (
           <>
