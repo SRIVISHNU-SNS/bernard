@@ -212,15 +212,30 @@ const normalizeToolChoice = (
   return toolChoice;
 };
 
-const resolveApiUrl = () =>
-  ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
-    ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions`
-    : "https://forge.manus.im/v1/chat/completions";
+function getLlmConfig() {
+  if (ENV.forgeApiKey) {
+    return {
+      apiUrl: `${(ENV.forgeApiUrl || "https://forge.manus.im").replace(/\/$/, "")}/v1/chat/completions`,
+      apiKey: ENV.forgeApiKey,
+      model: undefined,
+      isForge: true,
+    };
+  }
+
+  if (ENV.llmApiKey) {
+    return {
+      apiUrl: `${(ENV.llmApiUrl || "https://api.openai.com/v1").replace(/\/$/, "")}/chat/completions`,
+      apiKey: ENV.llmApiKey,
+      model: ENV.llmModel,
+      isForge: false,
+    };
+  }
+
+  return null;
+}
 
 const assertApiKey = () => {
-  if (!ENV.forgeApiKey) {
-    throw new Error("OPENAI_API_KEY is not configured");
-  }
+  if (!getLlmConfig()) throw new Error("No diagnosis model is configured");
 };
 
 const normalizeResponseFormat = ({
@@ -340,7 +355,8 @@ const fetchWithBackoff = async (
 };
 
 export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
-  assertApiKey();
+  const config = getLlmConfig();
+  if (!config) throw new Error("No diagnosis model is configured");
 
   const {
     messages,
@@ -362,8 +378,8 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     messages: messages.map(normalizeMessage),
   };
 
-  if (model) {
-    payload.model = model;
+  if (model || config.model) {
+    payload.model = config.isForge ? model || config.model : config.model || model;
   }
 
   if (tools && tools.length > 0) {
@@ -383,10 +399,10 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.max_tokens = resolvedMaxTokens;
   }
 
-  if (thinking) {
+  if (thinking && config.isForge) {
     payload.thinking = thinking;
   }
-  if (reasoning) {
+  if (reasoning && config.isForge) {
     payload.reasoning = reasoning;
   }
 
@@ -401,11 +417,11 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.response_format = normalizedResponseFormat;
   }
 
-  const response = await fetchWithBackoff(resolveApiUrl(), {
+  const response = await fetchWithBackoff(config.apiUrl, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      authorization: `Bearer ${ENV.forgeApiKey}`,
+      authorization: `Bearer ${config.apiKey}`,
     },
     body: JSON.stringify(payload),
   });
@@ -433,14 +449,12 @@ export type ModelsResponse = {
 };
 
 export async function listLLMModels(): Promise<ModelsResponse> {
-  assertApiKey();
-
-  const url = ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
-    ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/models`
-    : "https://forge.manus.im/v1/models";
+  const config = getLlmConfig();
+  if (!config) throw new Error("No diagnosis model is configured");
+  const url = config.apiUrl.replace(/\/chat\/completions$/, "/models");
 
   const response = await fetchWithBackoff(url, {
-    headers: { authorization: `Bearer ${ENV.forgeApiKey}` },
+    headers: { authorization: `Bearer ${config.apiKey}` },
   });
 
   if (!response.ok) {

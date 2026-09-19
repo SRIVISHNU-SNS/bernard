@@ -1,7 +1,29 @@
 import type { Express } from "express";
 import { ENV } from "./env";
+import { getPortableObject } from "../storage";
 
 export function registerStorageProxy(app: Express) {
+  app.get("/portable-storage/*", (req, res) => {
+    const key = (req.params as Record<string, string>)[0];
+    if (!key) {
+      res.status(400).send("Missing storage key");
+      return;
+    }
+
+    const object = getPortableObject(key);
+    if (!object) {
+      res.status(404).send("Stored evidence is no longer available");
+      return;
+    }
+
+    res.set({
+      "Content-Type": object.contentType,
+      "Cache-Control": "private, max-age=300",
+      "Content-Length": String(object.data.length),
+    });
+    res.send(object.data);
+  });
+
   app.get("/manus-storage/*", async (req, res) => {
     const key = (req.params as Record<string, string>)[0];
     if (!key) {
@@ -10,7 +32,7 @@ export function registerStorageProxy(app: Express) {
     }
 
     if (!ENV.forgeApiUrl || !ENV.forgeApiKey) {
-      res.status(500).send("Storage proxy not configured");
+      res.status(404).send("Stored evidence is no longer available");
       return;
     }
 
