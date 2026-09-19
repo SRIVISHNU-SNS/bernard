@@ -9,6 +9,7 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { storagePut } from "../storage";
+import { ENV } from "./env";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -46,7 +47,11 @@ async function startServer() {
     next(error);
   });
   registerStorageProxy(app);
-  registerOAuthRoutes(app);
+  if (ENV.oAuthServerUrl) {
+    registerOAuthRoutes(app);
+  } else {
+    console.log("[OAuth] Optional authentication routes disabled");
+  }
 
   app.post("/api/upload", async (req, res) => {
     try {
