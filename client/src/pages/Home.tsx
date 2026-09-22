@@ -344,18 +344,23 @@ function SafetyPanel({ diagnosis }: { diagnosis: StoredDiagnosis }) {
   return <div className={`mobile-card resolve-panel border-l-4 p-5 ${level === "green" ? "border-[var(--safe)] bg-[#F1FBF6]" : level === "amber" ? "border-[var(--caution)] bg-[#FFF9EA]" : "border-[var(--danger)] bg-[#FFF4F4]"}`}><div className="flex items-start gap-4"><Icon size={25} className={level === "green" ? "text-[var(--safe)]" : level === "amber" ? "text-[#8E6110]" : "text-[var(--danger)]"} /><div className="min-w-0"><div className={`font-display text-[13px] font-semibold ${tone === "safe" ? "text-[var(--safe)]" : tone === "caution" ? "text-[#8E6110]" : "text-[var(--danger)]"}`}>SAFETY CHECK</div><div className="mt-1 font-display text-[20px] font-semibold tracking-[-.02em]">{safetyLabel(level)}</div><p className="mt-2 max-w-[580px] text-[16px] leading-6">{diagnosis.safety_flag.reason}</p></div></div>{level === "red" && <div className="mt-5 flex flex-col gap-3 border-t border-[#E8BABA] pt-4 sm:flex-row sm:items-center sm:justify-between"><div className="text-[14px] text-[#8F2D2D]">Do not remove panels or test live components.</div><a href="https://www.google.com/search?q=appliance+repair+professional" target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 border border-[var(--danger)] px-4 py-2 font-display text-[13px] font-semibold text-[var(--danger)] hover:bg-white">Find a professional <ArrowRight size={15} /></a></div>}</div>;
 }
 
-const applianceIllustrations: Record<string, string> = {
-  Refrigerator: "/manus-storage/bernard-refrigerator_500f4dd7.png",
-  "Washing machine": "/manus-storage/bernard-appliance-illustration_82001637.png",
-  Dryer: "/manus-storage/bernard-dryer_2a7c25b3.png",
-  "Oven / range": "/manus-storage/bernard-oven_ca0a748c.png",
-  Dishwasher: "/manus-storage/bernard-dishwasher_f12e7833.png",
-  Phone: "/manus-storage/bernard-phone_321e3ade.png",
-  Laptop: "/manus-storage/bernard-laptop_7d95d3e5.png",
-  Headphones: "/manus-storage/bernard-headphones_d9b7d905.png",
-  Television: "/manus-storage/bernard-television_c91b349e.png",
-  "Other device": "/manus-storage/bernard-generic-device_b3b799fc.png",
-};
+function DiagnosisIllustration({ type, className = "" }: { type: string; className?: string }) {
+  const label = type === "Oven / range" ? "OVEN" : type === "Washing machine" ? "WASHER" : type === "Other device" ? "DEVICE" : type.toUpperCase();
+  const electronic = ["Phone", "Laptop", "Headphones", "Television", "Tablet", "Camera", "Game console"].includes(type);
+  return <svg viewBox="0 0 220 150" role="img" aria-label={`${type} illustration`} className={className} fill="none">
+    <rect x="8" y="8" width="204" height="134" rx="18" fill="#F3F6FF" />
+    <path d="M27 119h166" stroke="#D5DDEB" strokeWidth="3" strokeLinecap="round" />
+    {type === "Refrigerator" && <><rect x="73" y="27" width="74" height="88" rx="8" fill="#fff" stroke="#2B5FF0" strokeWidth="3" /><path d="M74 69h72M86 48v9M86 83v9" stroke="#2B5FF0" strokeWidth="3" strokeLinecap="round" /><circle cx="128" cy="47" r="3" fill="#2B5FF0" /><circle cx="128" cy="83" r="3" fill="#2B5FF0" /></>}
+    {(["Washing machine", "Dryer"].includes(type)) && <><rect x="70" y="31" width="80" height="84" rx="8" fill="#fff" stroke="#2B5FF0" strokeWidth="3" /><path d="M80 48h60" stroke="#2B5FF0" strokeWidth="3" strokeLinecap="round" /><circle cx="110" cy="82" r="23" fill="#F3F6FF" stroke="#2B5FF0" strokeWidth="3" /><circle cx="110" cy="82" r="8" stroke="#9AAFEA" strokeWidth="3" /><circle cx="128" cy="47" r="4" fill="#2B5FF0" /></>}
+    {(["Oven / range", "Microwave"].includes(type)) && <><rect x="57" y="39" width="106" height="76" rx="8" fill="#fff" stroke="#2B5FF0" strokeWidth="3" /><rect x="69" y="56" width="64" height="44" rx="4" fill="#E9EEFF" stroke="#2B5FF0" strokeWidth="3" /><path d="M143 57v5M143 72v5M143 87v5" stroke="#2B5FF0" strokeWidth="4" strokeLinecap="round" /><path d="M79 48h8M94 48h8M109 48h8" stroke="#9AAFEA" strokeWidth="3" strokeLinecap="round" /></>}
+    {type === "Dishwasher" && <><rect x="63" y="44" width="94" height="71" rx="8" fill="#fff" stroke="#2B5FF0" strokeWidth="3" /><path d="M71 60h78M82 76h64M91 92h46" stroke="#9AAFEA" strokeWidth="3" strokeLinecap="round" /><circle cx="138" cy="51" r="3" fill="#2B5FF0" /></>}
+    {electronic && type === "Phone" && <><rect x="86" y="23" width="48" height="94" rx="9" fill="#fff" stroke="#2B5FF0" strokeWidth="3" /><rect x="92" y="36" width="36" height="61" rx="3" fill="#E9EEFF" /><circle cx="110" cy="106" r="3" fill="#2B5FF0" /><circle cx="99" cy="31" r="2" fill="#9AAFEA" /></>}
+    {electronic && type === "Laptop" && <><rect x="72" y="31" width="76" height="55" rx="5" fill="#fff" stroke="#2B5FF0" strokeWidth="3" /><rect x="79" y="38" width="62" height="40" rx="2" fill="#E9EEFF" /><path d="M57 103h106l-10 12H67l-10-12Z" fill="#fff" stroke="#2B5FF0" strokeWidth="3" strokeLinejoin="round" /></>}
+    {electronic && !["Phone", "Laptop"].includes(type) && <><rect x="58" y="39" width="104" height="65" rx="7" fill="#fff" stroke="#2B5FF0" strokeWidth="3" /><rect x="67" y="48" width="86" height="43" rx="3" fill="#E9EEFF" /><path d="M81 113h58" stroke="#2B5FF0" strokeWidth="3" strokeLinecap="round" /></>}
+    {!(["Refrigerator", "Washing machine", "Dryer", "Oven / range", "Microwave", "Dishwasher", "Phone", "Laptop", "Headphones", "Television", "Tablet", "Camera", "Game console"].includes(type)) && <><rect x="72" y="39" width="76" height="72" rx="12" fill="#fff" stroke="#2B5FF0" strokeWidth="3" /><path d="M87 64h46M87 78h30" stroke="#9AAFEA" strokeWidth="4" strokeLinecap="round" /><circle cx="91" cy="94" r="5" fill="#2B5FF0" /></>}
+    <text x="110" y="132" textAnchor="middle" fill="#2B5FF0" fontFamily="IBM Plex Mono, monospace" fontSize="9" letterSpacing="1.4">{label}</text>
+  </svg>;
+}
 
 function difficultyCopy(value: string) {
   if (value === "easy") return { label: "Easy", detail: "A careful beginner can try this", tone: "safe" as const };
@@ -371,42 +376,38 @@ function ErrorCodeCard({ code }: { code: NonNullable<StoredDiagnosis["error_code
 async function exportDiagnosisPdf(diagnosis: StoredDiagnosis) {
   const { jsPDF } = await import("jspdf");
   const pdf = new jsPDF({ unit: "mm", format: "a4" });
-  const margin = 18;
-  const width = 210 - margin * 2;
-  let y = 22;
-  const ink = [20, 23, 26] as const;
-  const muted = [91, 100, 112] as const;
-  const blue = [43, 95, 240] as const;
-  const addText = (text: string, size: number, color: readonly [number, number, number] = ink, bold = false, gap = 6) => {
-    pdf.setFont("helvetica", bold ? "bold" : "normal");
-    pdf.setFontSize(size);
-    pdf.setTextColor(...color);
-    const lines = pdf.splitTextToSize(text, width);
-    if (y + lines.length * (size * .45) > 278) { pdf.addPage(); y = 20; }
-    pdf.text(lines, margin, y);
-    y += lines.length * (size * .45) + gap;
-  };
-  addText("bernard", 22, ink, true, 3);
-  addText("DEVICE DIAGNOSIS REPORT", 9, blue, true, 12);
-  addText(`${diagnosis.applianceType}${diagnosis.modelNumber ? ` · ${diagnosis.modelNumber}` : ""}`, 15, ink, true, 4);
-  addText(`Generated ${new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}`, 9, muted, false, 12);
-  addText(`Safety: ${safetyLabel(diagnosis.safety_flag.level)}`, 13, diagnosis.safety_flag.level === "red" ? [209, 67, 67] : diagnosis.safety_flag.level === "amber" ? [142, 97, 16] : [30, 142, 90], true, 3);
-  addText(diagnosis.safety_flag.reason, 10, muted, false, 10);
-  addText("Most likely problem", 12, ink, true, 3);
+  const margin = 16, pageWidth = 210, contentWidth = pageWidth - margin * 2;
+  const ink = [20, 23, 26] as const, muted = [91, 100, 112] as const, blue = [43, 95, 240] as const;
+  const safe = diagnosis.safety_flag.level === "red" ? [209, 67, 67] as const : diagnosis.safety_flag.level === "amber" ? [142, 97, 16] as const : [30, 142, 90] as const;
+  let y = 18;
+  const text = (value: string, x: number, top: number, size: number, color: readonly [number, number, number] = ink, bold = false, maxWidth = contentWidth) => { pdf.setFont("helvetica", bold ? "bold" : "normal"); pdf.setFontSize(size); pdf.setTextColor(...color); pdf.text(pdf.splitTextToSize(value, maxWidth), x, top, { lineHeightFactor: 1.35 }); };
+  const card = (top: number, height: number, fill: readonly [number, number, number] = [255, 255, 255]) => { pdf.setFillColor(...fill); pdf.setDrawColor(226, 229, 233); pdf.roundedRect(margin, top, contentWidth, height, 4, 4, "FD"); };
+  const section = (title: string, top: number) => { text(title.toUpperCase(), margin, top, 8, blue, true); };
+  pdf.setFillColor(243, 246, 255); pdf.rect(0, 0, pageWidth, 48, "F");
+  pdf.setFillColor(...blue); pdf.roundedRect(margin, 15, 13, 13, 3, 3, "F"); text("B", margin + 4.2, 24.2, 10, [255, 255, 255], true, 8);
+  text("bernard", margin + 18, 23, 19, ink, true, 60); text("DEVICE DIAGNOSIS REPORT", margin + 18, 31, 7.5, blue, true, 80);
+  text(new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }), pageWidth - margin - 48, 23, 8, muted, false, 48);
+  y = 58;
+  card(y, 43, [255, 255, 255]);
+  text(diagnosis.applianceType, margin + 8, y + 13, 17, ink, true, 105);
+  if (diagnosis.modelNumber) text(`Model ${diagnosis.modelNumber}`, margin + 8, y + 22, 9, muted, false, 100);
+  text("SAFETY VERDICT", margin + 8, y + 34, 7.5, safe, true, 60); text(safetyLabel(diagnosis.safety_flag.level), margin + 8, y + 40, 11, safe, true, 90);
+  pdf.setFillColor(233, 238, 255); pdf.roundedRect(151, y + 6, 42, 31, 4, 4, "F");
+  text(diagnosis.applianceType.slice(0, 13).toUpperCase(), 156, y + 33, 6.5, blue, true, 32);
+  y += 51;
+  section("Most likely problem", y); y += 5;
   const cause = diagnosis.probable_causes[0];
-  addText(cause ? `${cause.cause} (${cause.confidence}% likely)\n${cause.explanation}` : "Bernard needs a clearer photo of the problem area.", 10, muted, false, 9);
-  addText("At a glance", 12, ink, true, 3);
-  addText(`Repair difficulty: ${difficultyCopy(diagnosis.difficulty).label}\nEstimated cost in India: ${formatInrRange(diagnosis.estimated_cost_range)}\nTime needed: ${formatDuration(diagnosis.estimated_time_minutes)}`, 10, muted, false, 9);
-  if (diagnosis.error_code) {
-    addText(`Error code: ${diagnosis.error_code.code}\n${diagnosis.error_code.meaning}`, 10, blue, false, 9);
-  }
-  if (diagnosis.repair_steps.length) {
-    addText("What to do next", 12, ink, true, 4);
-    diagnosis.repair_steps.forEach((step, index) => addText(`${index + 1}. ${step.title}\n${step.detail}${step.caution ? `\nCaution: ${step.caution}` : ""}`, 10, muted, false, 7));
-  }
-  pdf.setFontSize(8);
-  pdf.setTextColor(...muted);
-  pdf.text("Bernard provides guidance, not a guarantee. Stop and contact a qualified professional if the safety verdict says Professional only.", margin, 287, { maxWidth: width });
+  const causeLines = cause ? pdf.splitTextToSize(cause.explanation, contentWidth - 16) : ["Bernard needs a clearer photo of the problem area."];
+  const causeHeight = 25 + causeLines.length * 4.5;
+  card(y, causeHeight);
+  if (cause) { text(cause.cause, margin + 8, y + 11, 13, ink, true, contentWidth - 34); text(`${cause.confidence}% likely`, pageWidth - margin - 34, y + 11, 8, blue, true, 26); }
+  text(cause ? cause.explanation : causeLines[0], margin + 8, y + (cause ? 19 : 12), 9.5, muted, false, contentWidth - 16); y += causeHeight + 10;
+  section("At a glance", y); y += 5; card(y, 31, [249, 250, 252]);
+  const metrics = [["DIFFICULTY", difficultyCopy(diagnosis.difficulty).label], ["ESTIMATED COST", formatInrRange(diagnosis.estimated_cost_range)], ["TIME NEEDED", formatDuration(diagnosis.estimated_time_minutes)]];
+  metrics.forEach(([label, value], index) => { const x = margin + 8 + index * 57; text(label, x, y + 10, 6.5, muted, true, 50); text(value, x, y + 21, 9.5, ink, true, 52); }); y += 41;
+  if (diagnosis.error_code) { section("Error code", y); y += 5; card(y, 24, [243, 246, 255]); text(diagnosis.error_code.code, margin + 8, y + 11, 12, blue, true, 45); text(diagnosis.error_code.meaning, margin + 43, y + 11, 9, muted, false, contentWidth - 51); y += 34; }
+  if (diagnosis.repair_steps.length) { section("What to do next", y); y += 5; diagnosis.repair_steps.slice(0, 6).forEach((step, index) => { const lines = pdf.splitTextToSize(step.detail, contentWidth - 30); const h = 18 + lines.length * 4.5; card(y, h); pdf.setFillColor(...blue); pdf.circle(margin + 10, y + 10, 4, "F"); text(String(index + 1), margin + 8.2, y + 12, 7, [255, 255, 255], true, 5); text(step.title, margin + 19, y + 9, 10, ink, true, contentWidth - 28); text(step.detail, margin + 19, y + 16, 8.8, muted, false, contentWidth - 28); y += h + 4; }); }
+  pdf.setDrawColor(226, 229, 233); pdf.line(margin, 282, pageWidth - margin, 282); text("Bernard provides guidance, not a guarantee. Stop and contact a qualified professional when the verdict says Professional only.", margin, 289, 7.5, muted, false, contentWidth);
   pdf.save(`bernard-diagnosis-${new Date().toISOString().slice(0, 10)}.pdf`);
 }
 
@@ -425,7 +426,7 @@ function Results({ diagnosis, onReset }: { diagnosis: StoredDiagnosis; onReset: 
     <section id="diagnosis" className="diagnosis-success scroll-mt-8"><div className="mb-4 flex items-center gap-3 text-[var(--safe)]" role="status" aria-live="polite"><span className="relative flex h-7 w-7 items-center justify-center"><span className="success-ring absolute inset-0 rounded-full bg-[#B7E5D0]" /><span className="success-pop relative flex h-7 w-7 items-center justify-center rounded-full bg-[var(--safe)] text-white"><Check size={15} strokeWidth={2.5} /></span></span><span className="font-display text-[13px] font-semibold">Diagnosis ready</span></div><SectionHeading eyebrow="02 · RESULT" title="Here’s the likely problem"><div className="flex flex-wrap gap-2 no-print"><Button variant="outline" size="sm" className="tap-target rounded-none border-[var(--border)] bg-white font-display text-[13px]" onClick={() => void exportDiagnosisPdf(diagnosis)}><Download size={14} /> Export PDF</Button><Button variant="outline" size="sm" className="tap-target rounded-none border-[var(--border)] bg-white font-display text-[13px]" onClick={onReset}><RotateCcw size={14} /> New photo</Button><Button variant="outline" size="sm" className="tap-target rounded-none border-[var(--border)] bg-white font-display text-[13px]" onClick={() => window.print()}><Printer size={14} /> Print</Button></div></SectionHeading><SafetyPanel diagnosis={diagnosis} />{diagnosis.error_code && <ErrorCodeCard code={diagnosis.error_code} />}
       <div className="mt-6 grid gap-5 md:grid-cols-[1fr_220px]">
         <div className="border border-[var(--border)] bg-white p-5"><div className="mb-4 flex items-center justify-between"><div className="font-display text-[14px] font-semibold">Most likely cause</div><span className="font-mono-data text-[12px] text-[var(--muted)]">{diagnosis.probable_causes[0]?.confidence ?? 0}% likely</span></div>{diagnosis.probable_causes.length ? <div className="space-y-5">{diagnosis.probable_causes.slice(0, 3).map((cause, index) => <div key={`${cause.cause}-${index}`}><div className="flex items-start gap-4"><div className="font-mono-data text-[12px] text-[var(--muted)]">{index === 0 ? "01" : "—"}</div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-baseline justify-between gap-2"><div className={`font-display font-semibold ${index === 0 ? "text-[20px]" : "text-[15px] text-[var(--muted)]"}`}>{cause.cause}</div>{index === 0 && <div className="font-mono-data text-[13px] font-medium text-[var(--signal)]">{cause.confidence}%</div>}</div>{index === 0 && <><div className="mt-2 h-1 bg-[var(--surface-alt)]"><div className="h-1 bg-[var(--signal)]" style={{ width: `${cause.confidence}%` }} /></div><p className="mt-2 text-[15px] leading-6 text-[var(--muted)]">{cause.explanation}</p></>}</div></div></div>)}</div> : <div className="text-[15px] text-[var(--muted)]">We need a closer photo of the problem area.</div>}<button type="button" className="mt-5 flex w-full items-center justify-between border-t border-[var(--border)] pt-4 text-left font-display text-[13px] font-semibold" onClick={() => setWhyOpen(!whyOpen)}><span className="flex items-center gap-2"><CircleHelp size={15} className="text-[var(--signal)]" /> Why we think this</span><ChevronDown size={16} className={`transition-transform ${whyOpen ? "rotate-180" : ""}`} /></button>{whyOpen && <div className="mt-3 bg-[var(--surface-alt)] p-3 text-[14px] leading-6 text-[var(--muted)]">We compare what is visible in your photo with common appliance failure patterns. The percentage is a confidence estimate, not a guarantee.</div>}</div>
-        <div className="mobile-card border border-[var(--border)] bg-[var(--surface-alt)] p-5"><img src={applianceIllustrations[diagnosis.applianceType] ?? applianceIllustrations["Other device"]} alt={`${diagnosis.applianceType} illustration`} loading="lazy" decoding="async" className="mx-auto mb-4 h-32 w-32 object-contain" /><div className="font-display text-[13px] font-semibold text-[var(--muted)]">AT A GLANCE</div><div className="mt-4 space-y-4"><div><div className="text-[13px] text-[var(--muted)]">Repair difficulty</div><div className="mt-1"><StatusChip tone={difficultyCopy(diagnosis.difficulty).tone}>{difficultyCopy(diagnosis.difficulty).label}</StatusChip></div><div className="mt-1 text-[13px] text-[var(--muted)]">{difficultyCopy(diagnosis.difficulty).detail}</div></div><div><div className="text-[13px] text-[var(--muted)]">Likely cost in India</div><div className="mt-1 font-display text-[18px] font-semibold">{formatInrRange(diagnosis.estimated_cost_range)}</div></div><div><div className="text-[13px] text-[var(--muted)]">Time needed</div><div className="mt-1 font-mono-data text-[16px]">{formatDuration(diagnosis.estimated_time_minutes)}</div></div></div></div>
+        <div className="mobile-card border border-[var(--border)] bg-[var(--surface-alt)] p-5"><DiagnosisIllustration type={diagnosis.applianceType} className="mx-auto mb-4 h-32 w-full max-w-[210px]" /><div className="font-display text-[13px] font-semibold text-[var(--muted)]">AT A GLANCE</div><div className="mt-4 space-y-4"><div><div className="text-[13px] text-[var(--muted)]">Repair difficulty</div><div className="mt-1"><StatusChip tone={difficultyCopy(diagnosis.difficulty).tone}>{difficultyCopy(diagnosis.difficulty).label}</StatusChip></div><div className="mt-1 text-[13px] text-[var(--muted)]">{difficultyCopy(diagnosis.difficulty).detail}</div></div><div><div className="text-[13px] text-[var(--muted)]">Likely cost in India</div><div className="mt-1 font-display text-[18px] font-semibold">{formatInrRange(diagnosis.estimated_cost_range)}</div></div><div><div className="text-[13px] text-[var(--muted)]">Time needed</div><div className="mt-1 font-mono-data text-[16px]">{formatDuration(diagnosis.estimated_time_minutes)}</div></div></div></div>
       </div>
     </section>
 
